@@ -261,6 +261,11 @@
   .mini-btn:hover{background:rgba(120,130,160,.14);}
   .mini-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
   #relaxSlider{width:100%;accent-color:var(--accent);}
+  /* small per-button caption under each "重置位置" icon, so what each of
+     the three visually-identical-looking mini-btns actually does doesn't
+     rely on hovering for a title tooltip alone. */
+  .reset-btn-col{display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .reset-btn-caption{font-size:9px;line-height:1.15;color:var(--text-dim);text-align:center;white-space:nowrap;}
 
   /* ---------- random-pick flyout ---------- */
   #randomFlyout{
@@ -603,6 +608,7 @@
   html.mobile-mode #paramsFlyout .param-stepper{gap:6px;}
   html.mobile-mode #paramsFlyout .param-stepper span{font-size:11px;min-width:28px;}
   html.mobile-mode #paramsFlyout .mini-btn{width:24px;height:24px;font-size:12px;border-radius:7px;}
+  html.mobile-mode .reset-btn-caption{font-size:8px;}
 </style>
 </head>
 <body>
@@ -680,10 +686,19 @@
   <div id="paramsFlyout">
     <div class="param-block">
       <div class="param-label">重置位置</div>
-      <div class="param-stepper" style="flex-wrap:wrap;">
-        <button class="mini-btn" id="btnResetVisibleSizes" title="重置当前可见区域根节点和它的直接子节点的大小（不影响更深层子节点，也不影响其自身不可见的祖先）">⭕️</button>
-        <button class="mini-btn" id="btnResetAllSizes" title="重置整棵树所有节点的大小">💣</button>
-        <button class="mini-btn" id="btnCenterVisibleChildren" title="把当前可见区域根节点的一级孩子整体平移到居中位置，母节点边框收紧到刚好包裹所有孩子并留一圈均匀间隙（不改变孩子之间的相对位置和相对大小，不影响二级及更深层节点）">🎯</button>
+      <div class="param-stepper" style="flex-wrap:wrap;align-items:flex-start;">
+        <div class="reset-btn-col">
+          <button class="mini-btn" id="btnResetVisibleSizes" title="重置当前可见区域根节点的直接子节点的大小和位置，按数量分布为对称图形（不影响更深层子节点，也不影响其自身不可见的祖先）">⭕️</button>
+          <div class="reset-btn-caption">局部重排<br>大小+位置</div>
+        </div>
+        <div class="reset-btn-col">
+          <button class="mini-btn" id="btnResetAllSizes" title="重置整棵树所有节点的大小，并把每一层子节点按数量重新分布为对称图形（弹窗确认）">💣</button>
+          <div class="reset-btn-caption">全树重排<br>大小+位置</div>
+        </div>
+        <div class="reset-btn-col">
+          <button class="mini-btn" id="btnCenterVisibleChildren" title="把当前可见区域根节点的一级孩子整体平移到居中位置，母节点边框收紧到刚好包裹所有孩子并留一圈均匀间隙（不改变孩子之间的相对位置和相对大小，不影响二级及更深层节点）">🎯</button>
+          <div class="reset-btn-caption">仅居中<br>不改大小</div>
+        </div>
       </div>
     </div>
     <div class="param-block">
@@ -4922,74 +4937,146 @@ document.getElementById('expandCapPlus').addEventListener('click', function(){
   saveParams();
 });
 
-/* un-place any child of a given parent whose CURRENT distance from center
-   is far outside where a normal ring-placement would ever put it (same
-   "reach vs idealR" measure containerSize's own idealR baseline uses,
-   computed from each child's ALREADY-RESET, now-normal-sized box).
-   Setting placed=false does NOT move the child itself — it hands the node
-   to layoutChildrenPositions' existing freshBoxes ring-placement path on
-   the very next render, the same mechanism that places any newly-inserted
-   node, landing it at a normal ring radius instead of wherever it had
-   drifted to. */
-function repositionOverreachingChildren(parentIds){
-  var OVERREACH_RATIO = 1.28; // how far past its own idealR a settled child's real position must reach before a reset repositions it fresh
-  parentIds.forEach(function(pid){
-    var kids = children(pid);
-    if(!kids.length) return;
-    var boxes = kids.map(function(k){
-      var b = k.drilled ? containerSize(k) : computeNodeBox(k);
-      return {node:k, r:boxRadius(b.w, b.h)};
-    });
-    var sumD=0; boxes.forEach(function(b){ sumD+=b.r*2*1.14; });
-    var maxChildR = Math.max.apply(null, boxes.map(function(b){return b.r;}));
-    var idealR = Math.max(sumD/(2*Math.PI), 90) + maxChildR;
-    boxes.forEach(function(b){
-      var reach = Math.sqrt(b.node.px*b.node.px + b.node.py*b.node.py) + b.r;
-      if(reach > idealR * OVERREACH_RATIO) b.node.placed = false;
-    });
+/* index -> unit {x,y} offset (pre-scale) for the fixed small-count
+   symmetric arrangements the two size-reset buttons distribute direct
+   children into — "依据一级子节点数量,将他们以空间均匀的方式分布在母节点
+   正中央": 2 -> 水平两点, 3/5 -> 三角形/五角星, 4 -> 2x2正方形 (not a
+   rotated diamond ring — "四个兄弟排成直线,不是很合理,应该是2x2正方形"),
+   6 -> 五角星带中心节点. n>=7 falls through to the square-grid rule at the
+   bottom instead of getting its own entry here. */
+function symmetricUnitPositions(n){
+  var TWO_PI = Math.PI*2;
+  if(n<=1) return [{x:0,y:0}];
+  if(n===2) return [{x:-0.5,y:0},{x:0.5,y:0}];
+  if(n===3 || n===5){
+    // regular n-gon, one vertex pointing straight up — a 5-pointed star's
+    // own tips sit at exactly these same 5 evenly-spaced points, so a
+    // regular pentagon's vertex ring already IS the "五角星" arrangement.
+    var R = 0.5/Math.sin(Math.PI/n);
+    var out = [];
+    for(var i=0;i<n;i++){
+      var ang = (i/n)*TWO_PI - Math.PI/2;
+      out.push({x:Math.cos(ang)*R, y:Math.sin(ang)*R});
+    }
+    return out;
+  }
+  if(n===4){
+    return [{x:-0.5,y:-0.5},{x:0.5,y:-0.5},{x:-0.5,y:0.5},{x:0.5,y:0.5}];
+  }
+  if(n===6){
+    // same 5-point ring as n===5, plus one node pinned dead center.
+    var R6 = 0.5/Math.sin(Math.PI/5);
+    var out6 = [{x:0,y:0}];
+    for(var j=0;j<5;j++){
+      var ang6 = (j/5)*TWO_PI - Math.PI/2;
+      out6.push({x:Math.cos(ang6)*R6, y:Math.sin(ang6)*R6});
+    }
+    return out6;
+  }
+  // 7+: "近似正方形排列...向上寻找平方数然后视图填满它的布局" — smallest
+  // side*side grid that fits every node (7/8/9 all land on a 3x3 grid),
+  // filled row-major and centered on the mother; any leftover cells in
+  // the grid's last row are simply left empty.
+  var side = Math.ceil(Math.sqrt(n));
+  var outg = [];
+  for(var k=0;k<n;k++){
+    var row = Math.floor(k/side), col = k%side;
+    outg.push({x:col-(side-1)/2, y:row-(side-1)/2});
+  }
+  return outg;
+}
+
+/* redistribute parentId's DIRECT children into the symmetricUnitPositions
+   arrangement for however many there are, scaled so adjacent children
+   never crowd each other — used by both size-reset buttons below so the
+   exact same even-spacing rule applies at every level either button
+   touches. Every child's OWN size must already be at its final (reset)
+   value before this runs, since the unit grid is scaled off the resulting
+   boxes' own radii — this is what makes "间距合理适配大小,没有节点被挤压"
+   hold regardless of how big the reset default size turns out to be. */
+function symmetrizeChildrenOf(parentId){
+  var kids = children(parentId);
+  var n = kids.length;
+  if(!n) return;
+  var boxes = kids.map(function(k){
+    var b = k.drilled ? containerSize(k) : computeNodeBox(k);
+    return {node:k, r:boxRadius(b.w, b.h)};
   });
+  var maxD = Math.max.apply(null, boxes.map(function(b){ return b.r*2; }));
+  var units = symmetricUnitPositions(n);
+  // scale by the arrangement's OWN closest pairwise unit-distance, not a
+  // fixed assumed spacing of 1 — the n===6 star+center layout's own
+  // center-to-ring distance is ~0.85, tighter than its ring-to-ring edges,
+  // so scaling off a flat "1 unit apart" assumption would let the center
+  // node crowd its neighbors closer than every other pair in that same
+  // arrangement.
+  var minUnitDist = Infinity;
+  for(var i=0;i<n;i++){
+    for(var j=i+1;j<n;j++){
+      var dx=units[i].x-units[j].x, dy=units[i].y-units[j].y;
+      var d = Math.sqrt(dx*dx+dy*dy);
+      if(d<minUnitDist) minUnitDist = d;
+    }
+  }
+  if(!isFinite(minUnitDist) || minUnitDist<=0) minUnitDist = 1;
+  var cellSize = (maxD*1.14)/minUnitDist; // same 14% gap ratio this file's other ring/grid placement math already uses
+  boxes.forEach(function(b, i){
+    b.node.px = units[i].x*cellSize;
+    b.node.py = units[i].y*cellSize;
+    b.node.placed = true;
+  });
+}
+
+/* depth-first, children-before-parent: symmetrize every node's direct
+   children throughout id's whole subtree. Must run bottom-up (deepest
+   first) rather than top-down — a drilled child's own containerSize
+   depends on ITS children's px/py already being final, so symmetrizing a
+   parent before its drilled child's own subtree has been repositioned
+   would size that child off stale, pre-reset positions. */
+function symmetrizeAllRecursive(id){
+  var kids = children(id);
+  kids.forEach(function(k){ symmetrizeAllRecursive(k.id); });
+  if(kids.length) symmetrizeChildrenOf(id);
 }
 
 /* reset a set of nodes' own visual scale back to the fresh-node defaults
    (SCALE_NOKIDS_DEFAULT/SCALE_KIDS_DEFAULT, both axes) — px/py are left
-   completely untouched, so this can never itself move anything. Resetting
-   size WILL generally change how crowded each affected node's sibling
-   group is (bigger or smaller relative to its neighbors), but that's
-   already handled by the exact same "视觉和真实大小分离" mechanism as
-   every other size change in this app: computeCrowdScale recomputes each
-   parent's shrink factor fresh on every render from the nodes' CURRENT
-   sizes and positions, scoped independently per parent and obeying
-   appParams.relaxStrength — so calling render() after this is the entire
-   "avoid collision" story. repositionOverreachingChildren (called right
-   after) covers the one remaining case a pure size reset can't fix on its
-   own: a child dragged extremely far from center keeps demanding a huge
-   container regardless of how small its own size resets to — giving it a
-   fresh, normal ring placement instead of leaving it exactly where it
-   drifted to. */
+   untouched here; repositioning (via symmetrizeChildrenOf/
+   symmetrizeAllRecursive) is each caller's own separate step below. */
 function resetNodeSizes(ids){
-  pushUndo();
   ids.forEach(function(id){
     var n = node(id);
     if(!n) return;
     n.scaleXNoKids = SCALE_NOKIDS_DEFAULT; n.scaleYNoKids = SCALE_NOKIDS_DEFAULT;
     n.scaleXKids = SCALE_KIDS_DEFAULT; n.scaleYKids = SCALE_KIDS_DEFAULT;
   });
-  repositionOverreachingChildren(ids);
-  scheduleSave();
-  render();
 }
 document.getElementById('btnResetVisibleSizes').addEventListener('click', function(){
-  // "只负责重置当前可见区域根节点和它的直接children,这几个节点的大小" —
-  // the focus root itself plus its own direct children ONLY, regardless of
-  // whether any of those children are further drilled open (their own
-  // deeper descendants are untouched) and regardless of the focus root's
-  // own (currently invisible) ancestors.
+  // "局部重排": only the current focus root's own direct children — reset
+  // their size AND redistribute their positions into the symmetric
+  // arrangement, without touching anything one level deeper or the focus
+  // root's own (currently invisible) ancestors. No confirmation dialog —
+  // scope is strictly local, same as before.
+  pushUndo();
   var focusId = state.focusId;
-  var ids = [focusId].concat(children(focusId).map(function(k){ return k.id; }));
-  resetNodeSizes(ids);
+  var kidIds = children(focusId).map(function(k){ return k.id; });
+  resetNodeSizes([focusId].concat(kidIds));
+  symmetrizeChildrenOf(focusId);
+  scheduleSave();
+  render();
 });
 document.getElementById('btnResetAllSizes').addEventListener('click', function(){
+  // "全树重排": every node in the whole tree, at every depth — reset every
+  // node's own size, then redistribute EVERY parent's direct children into
+  // the same symmetric arrangement. This is the one global/destructive
+  // action among the three reset-position buttons, so — unlike the other
+  // two — it warns before running.
+  if(!confirm('将重置整棵树所有节点的大小，并把每一层的子节点重新排布为对称图形。此操作影响全树，可用 ⌘Z 撤销。是否继续？')) return;
+  pushUndo();
   resetNodeSizes(subtreeIds(state.rootId));
+  symmetrizeAllRecursive(state.rootId);
+  scheduleSave();
+  render();
 });
 document.getElementById('btnCenterVisibleChildren').addEventListener('click', function(){
   // "中心化": translate the current focus root's DIRECT children as a
