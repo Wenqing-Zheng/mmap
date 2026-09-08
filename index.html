@@ -130,45 +130,44 @@
   #railDepthMinus{font-size:calc(var(--rail-w)*0.28);font-weight:700;}
   #railDepthPlus{font-size:calc(var(--rail-w)*0.28);font-weight:700;}
   #railDepthValue{font-size:calc(var(--rail-w)*0.19);font-weight:700;}
-  /* mobile toolbar: Shift/Ctrl/Option/Cmd modifier toggles + Enter + 4
-     arrow keys + a right-click stand-in, all as touch-sized buttons
-     inside the rail — "手机模式...允许在手机上模拟键盘多个案件联合按下这些
-     组合快捷键". Hidden by default (display:none set inline); the
-     "手机模式" params-panel button toggles it on/off. Laid out as its own
-     mini-grid rather than reusing .rail-btn's single-icon sizing, since it
-     needs to fit 4 modifier toggles PLUS an arrow-pad PLUS a right-click
-     button all within the narrow rail column — "布局合理排版以适配手机端
-     打开". */
-  #mobileToolbar{
-    display:flex;flex-direction:column;align-items:center;gap:4px;
-    width:100%;padding:4px 0 8px;border-bottom:1px solid var(--panel-border);
+  /* mobile toolbar: Shift/Ctrl/Option/Cmd modifier toggles + Enter + Esc +
+     4 arrow keys + a drag-pickup toggle, all as touch-sized buttons —
+     "手机模式...允许在手机上模拟键盘多个案件联合按下这些组合快捷键". A flat
+     row (not a column grid) since mobile mode moves the whole rail to the
+     BOTTOM of the screen and wraps it onto multiple rows so every icon is
+     visible at once — see the html.mobile-mode block near the end of this
+     stylesheet for the bottom-bar layout itself; this block only styles
+     the individual keys so they look right inside that wrapping row.
+     Entirely inert on desktop: #mobileToolbar only renders (display:flex)
+     under html.mobile-mode, so none of this competes with #rail's normal
+     vertical layout. */
+  #mobileToolbar{display:none;}
+  html.mobile-mode #mobileToolbar{
+    display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:center;
+    gap:6px;width:100%;padding:6px 4px;
   }
   .mobile-key{
     display:flex;align-items:center;justify-content:center;user-select:none;
-    border-radius:6px;border:1px solid var(--panel-border);background:var(--bg);
-    color:var(--text-main);cursor:pointer;font-size:calc(var(--rail-w)*0.24);
-    transition:background .1s;
+    border-radius:8px;border:1px solid var(--panel-border);background:var(--bg);
+    color:var(--text-main);cursor:pointer;transition:background .1s;
+    width:38px;height:38px;font-size:16px;flex-shrink:0;
   }
   .mobile-key:hover{background:rgba(120,130,160,.12);}
   /* a modifier toggle STAYS pressed/highlighted after being tapped (unlike
      a real keyboard's momentary hold) — since touch has no "hold this key
      down while tapping another" gesture, tapping a modifier instead ARMS
-     it for the NEXT key/arrow/click tap, then the modifier set is
+     it for the NEXT key/arrow/click/node-tap, then the modifier set is
      consumed and cleared right after that tap fires — see
      dispatchMobileKey's own comment. */
   .mod-key.armed{background:var(--accent);color:#fff;border-color:var(--accent);}
-  #mobileModRow{
-    display:grid;grid-template-columns:1fr 1fr;gap:4px;width:calc(var(--rail-w)*0.85);
-  }
-  #mobileModRow .mobile-key{width:100%;height:calc(var(--rail-w)*0.42);}
-  #mobileEnterKey{width:calc(var(--rail-w)*0.85);height:calc(var(--rail-w)*0.42);}
-  #mobileArrowPad{
-    display:flex;flex-direction:column;align-items:center;gap:3px;
-    width:calc(var(--rail-w)*0.85);
-  }
-  #mobileArrowPad .mobile-key{width:calc(var(--rail-w)*0.42);height:calc(var(--rail-w)*0.36);}
-  #mobileArrowMidRow{display:flex;gap:3px;}
-  #mobileRightClickKey{width:calc(var(--rail-w)*0.85);height:calc(var(--rail-w)*0.42);font-size:calc(var(--rail-w)*0.26);}
+  /* drag-pickup toggle: tap once to arm ("拖拽" mode active, highlighted),
+     tap a node to pick it up (armed state now means "carrying a node"),
+     tap again (or tap blank canvas) to drop it at the current position —
+     "点击拖拽键→点节点拾取→移动→再点拖拽键放下". The stronger inset ring
+     (.carrying) distinguishes "armed, waiting for a node" from "actively
+     carrying one" — see startMobileDragPickup. */
+  #mobileDragKey.armed{background:var(--accent);color:#fff;border-color:var(--accent);}
+  #mobileDragKey.carrying{box-shadow:inset 0 0 0 2px #fff;}
   .rail-sep{width:calc(var(--rail-w)*0.5);height:1px;background:var(--panel-border);margin:6px 0;flex-shrink:0;}
   .rail-spacer{flex:1;}
   #railPinnedZone{
@@ -547,6 +546,63 @@
   .id-btn{border:none;border-radius:9px;padding:7px 15px;font-size:12.5px;cursor:pointer;}
   .id-btn.primary{background:var(--accent);color:#fff;}
   .id-btn.plain{background:rgba(120,130,160,.14);color:var(--text-main);}
+
+  /* ---------- mobile mode: bottom nav bar + bottom-sheet flyouts ----------
+     Everything below is gated under html.mobile-mode (toggled by
+     applyMobileMode, see the "手机模式" params-panel button) so desktop's
+     left-rail / left-sliding-flyout layout is completely untouched when
+     the class is absent — same scoping precedent as html.cat-edit-mode
+     elsewhere in this file. "导航栏从左侧变成底部...多排展开导航栏图标，
+     可以一次看见全部...搜索框/tree view/布局设置都改成从下面往上弹出一个
+     固定长度的区域". */
+  html.mobile-mode #app{flex-direction:column;}
+  html.mobile-mode #canvasWrap{order:1;}
+  html.mobile-mode #rail{
+    order:2;width:100%;height:auto;max-height:38vh;flex-direction:row;flex-wrap:wrap;
+    align-items:center;justify-content:center;gap:6px;padding:8px;
+    border-right:none;border-top:1px solid var(--panel-border);overflow-y:auto;
+  }
+  html.mobile-mode #rail .rail-btn{width:40px;height:40px;border-radius:9px;font-size:15px;}
+  html.mobile-mode #rail .rail-btn svg{width:19px;height:19px;}
+  html.mobile-mode .rail-sep{width:1px;height:26px;margin:0 4px;}
+  /* .rail-spacer only exists to push the theme button to the bottom of a
+     vertical column — meaningless (and would eat a whole flex-wrap row)
+     once the rail is a horizontal wrapping bar, so it's simply hidden. */
+  html.mobile-mode .rail-spacer{display:none;}
+  html.mobile-mode #railResizer{display:none;}
+  html.mobile-mode #railPinnedZone{flex-direction:row;flex-wrap:wrap;width:auto;min-height:0;}
+
+  /* fixed-height bottom sheets sliding up from the bottom, instead of the
+     desktop panels' left-slide-in — "照顾手机竖屏". Sheets sit above the
+     bottom nav bar (z-index already 600 on all four) so opening one just
+     covers the bar, matching common mobile bottom-sheet conventions. Each
+     flyout's own scrollable inner list (#searchResults/#treeList/
+     #paramsFlyout itself all already have flex:1 or overflow-y:auto from
+     their desktop rules) keeps working unchanged inside the new fixed
+     height — "如果列表太长，滚动显示". */
+  html.mobile-mode #searchFlyout, html.mobile-mode #treeFlyout,
+  html.mobile-mode #paramsFlyout, html.mobile-mode #randomFlyout{
+    left:0;right:0;top:auto;bottom:0;width:100%;height:56vh;max-height:56vh;
+    border-right:none;border-top:1px solid var(--panel-border);border-radius:14px 14px 0 0;
+    transform:translateY(100%);
+  }
+  html.mobile-mode #searchFlyout.open, html.mobile-mode #treeFlyout.open,
+  html.mobile-mode #paramsFlyout.open, html.mobile-mode #randomFlyout.open{
+    transform:translateY(0);
+  }
+
+  /* params-panel re-layout: tighter padding + smaller type so the same
+     content fits comfortably in the shorter bottom-sheet height —
+     "布局设置区域重新排版（文字可以进一步精简和字体变小）". Label text
+     itself is swapped for a shortened string at runtime (see
+     applyMobileMode's data-mobile/data-full swap) rather than duplicated
+     here, so the underlying desktop text is preserved byte-for-byte when
+     mobile mode is off. */
+  html.mobile-mode #paramsFlyout .param-block{padding:10px 12px;}
+  html.mobile-mode #paramsFlyout .param-label{font-size:11px;margin-bottom:6px;}
+  html.mobile-mode #paramsFlyout .param-stepper{gap:6px;}
+  html.mobile-mode #paramsFlyout .param-stepper span{font-size:11px;min-width:28px;}
+  html.mobile-mode #paramsFlyout .mini-btn{width:24px;height:24px;font-size:12px;border-radius:7px;}
 </style>
 </head>
 <body>
@@ -559,23 +615,18 @@
     <button class="rail-btn" id="btnTree" title="树状视图">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
     </button>
-    <div id="mobileToolbar" style="display:none;">
-      <div id="mobileModRow">
-        <div class="mobile-key mod-key" data-mod="shift" title="Shift">⇧</div>
-        <div class="mobile-key mod-key" data-mod="ctrl" title="Control">⌃</div>
-        <div class="mobile-key mod-key" data-mod="alt" title="Option">⌥</div>
-        <div class="mobile-key mod-key" data-mod="meta" title="Command">⌘</div>
-      </div>
+    <div id="mobileToolbar">
+      <div class="mobile-key mod-key" data-mod="shift" title="Shift">⇧</div>
+      <div class="mobile-key mod-key" data-mod="ctrl" title="Control">⌃</div>
+      <div class="mobile-key mod-key" data-mod="alt" title="Option">⌥</div>
+      <div class="mobile-key mod-key" data-mod="meta" title="Command">⌘</div>
       <div class="mobile-key" id="mobileEnterKey" title="Enter">⏎</div>
-      <div id="mobileArrowPad">
-        <div class="mobile-key" id="mobileArrowUp" data-arrow="ArrowUp" title="↑">▲</div>
-        <div id="mobileArrowMidRow">
-          <div class="mobile-key" id="mobileArrowLeft" data-arrow="ArrowLeft" title="←">◀</div>
-          <div class="mobile-key" id="mobileArrowRight" data-arrow="ArrowRight" title="→">▶</div>
-        </div>
-        <div class="mobile-key" id="mobileArrowDown" data-arrow="ArrowDown" title="↓">▼</div>
-      </div>
-      <div class="mobile-key" id="mobileRightClickKey" title="模拟右键">🖱</div>
+      <div class="mobile-key" id="mobileArrowUp" data-arrow="ArrowUp" title="↑">▲</div>
+      <div class="mobile-key" id="mobileArrowDown" data-arrow="ArrowDown" title="↓">▼</div>
+      <div class="mobile-key" id="mobileArrowLeft" data-arrow="ArrowLeft" title="←">◀</div>
+      <div class="mobile-key" id="mobileArrowRight" data-arrow="ArrowRight" title="→">▶</div>
+      <div class="mobile-key" id="mobileDragKey" title="拖拽：点一下拾取节点，再点一下放下">✋</div>
+      <div class="mobile-key" id="mobileEscKey" title="Esc">⎋</div>
     </div>
     <div id="railDepthCtl" title="默认最大可视深度">
       <div id="railDepthMinus">‹</div>
@@ -636,11 +687,11 @@
       </div>
     </div>
     <div class="param-block">
-      <div class="param-label">同级节点避免覆盖程度</div>
+      <div class="param-label" data-mobile="重叠避免度">同级节点避免覆盖程度</div>
       <input type="range" id="relaxSlider" min="0" max="100" step="1">
     </div>
     <div class="param-block">
-      <div class="param-label">全局默认字体大小（相对形状）</div>
+      <div class="param-label" data-mobile="字体大小">全局默认字体大小（相对形状）</div>
       <div class="param-stepper">
         <button class="mini-btn" id="fontScaleMinus">－</button>
         <span id="fontScaleValue">3.0×</span>
@@ -648,7 +699,7 @@
       </div>
     </div>
     <div class="param-block">
-      <div class="param-label">⌘点击＊一次性展开子树的最大层数</div>
+      <div class="param-label" data-mobile="⌘＊展开层数">⌘点击＊一次性展开子树的最大层数</div>
       <div class="param-stepper">
         <button class="mini-btn" id="expandCapMinus">－</button>
         <span id="expandCapValue">5</span>
@@ -672,7 +723,7 @@
     <div class="param-block">
       <div class="param-label">手机模式</div>
       <div class="param-stepper" style="flex-wrap:wrap;">
-        <button class="mini-btn" id="btnMobileMode" title="在导航栏加入 Shift/Ctrl/Option/Cmd/Enter 及方向键、右键模拟按钮，方便手机端触屏组合出键盘快捷键">📱</button>
+        <button class="mini-btn" id="btnMobileMode" title="导航栏移到底部，加入 Shift/Ctrl/Option/Cmd/Enter/Esc/方向键/拖拽 触屏按钮，面板改为从底部弹出">📱</button>
       </div>
     </div>
   </div>
@@ -2775,17 +2826,37 @@ function nodeMousedown(ev, el, n){
   if(document.activeElement && document.activeElement !== document.body && document.activeElement.blur){
     document.activeElement.blur();
   }
+  // mobile drag-pickup toggle armed via #mobileDragKey — "点击拖拽键→点节点
+  // 拾取→移动→再点拖拽键放下" — a tap on any node while armed picks it up
+  // instead of running the normal click/select/drag logic below; every
+  // other gesture (double-click, ⌥/⌘/⇧ branches, plain drag) stays
+  // reachable exactly as before once nothing is armed/carried.
+  if(mobileDrag.armed && !mobileDrag.node){ mobileDragPick(n, ev); return; }
+  if(mobileDrag.node) return;
   if(isDoubleClick(n.id, ev)){
     collapseNode(n);
     return;
   }
-  if(ev.altKey){
+  // touch-originated mousedowns never carry real shiftKey/ctrlKey/altKey/
+  // metaKey (there's no physical modifier key in a tap), so the mobile
+  // toolbar's armed modifiers (mobileArmedMods) are overlaid here — arming
+  // ⇧ then tapping a node now behaves exactly like a real Shift+click.
+  // Consumed (cleared) right after this one tap, same "use once" rule as
+  // dispatchMobileKey's keyboard path.
+  var effAlt = ev.altKey || mobileArmedMods.alt;
+  var effMeta = ev.metaKey || mobileArmedMods.meta;
+  var effShift = ev.shiftKey || mobileArmedMods.shift;
+  if(mobileArmedMods.shift || mobileArmedMods.ctrl || mobileArmedMods.alt || mobileArmedMods.meta){
+    mobileArmedMods.shift = mobileArmedMods.ctrl = mobileArmedMods.alt = mobileArmedMods.meta = false;
+    refreshMobileModUI();
+  }
+  if(effAlt){
     selectedId = n.id;
     triggerGlow(); render();
     openInsertDialog({mode:'edit', node:n});
     return;
   }
-  if(ev.metaKey && ev.shiftKey){
+  if(effMeta && effShift){
     // batch-cycle visibility of this node AND its entire subtree (every
     // descendant at every depth) together, not just its direct children —
     // previously this only reached one level down, so the node itself and
@@ -2801,7 +2872,7 @@ function nodeMousedown(ev, el, n){
     }
     return;
   }
-  if(ev.shiftKey && !ev.altKey){
+  if(effShift && !effAlt){
     // plain Shift+click (no ⌘) toggles category-edit mode on/off — see
     // toggleCategoryEditMode. Which node was clicked doesn't matter for
     // entering/exiting the mode itself; per-node category cycling only
@@ -2810,7 +2881,7 @@ function nodeMousedown(ev, el, n){
     toggleCategoryEditMode();
     return;
   }
-  if(ev.metaKey){
+  if(effMeta){
     // ⌘+click cycles this one node's visibility (hidden/summary/summary+detail).
     pushUndo();
     cycleVis(n);
@@ -3558,6 +3629,7 @@ function minScaleForFit(){
   return Math.max(MIN_SCALE, fitScale);
 }
 canvasWrap.addEventListener('mousedown', function(e){
+  if(mobileDrag.node){ mobileDragMoveTo(e.clientX, e.clientY); return; }
   if(e.target.closest('.mm-node')) return;
   if(e.shiftKey){ toggleCategoryEditMode(); return; }
   if(e.metaKey) return; // ⌘+click on blank canvas is a no-op (nothing under the cursor to act on)
@@ -5004,11 +5076,11 @@ document.getElementById('btnFit').addEventListener('click', function(){
    backing out of one by mistake both just work. */
 var mobileArmedMods = {shift:false, ctrl:false, alt:false, meta:false};
 function refreshMobileModUI(){
-  document.querySelectorAll('#mobileModRow .mod-key').forEach(function(el){
+  document.querySelectorAll('#mobileToolbar .mod-key').forEach(function(el){
     el.classList.toggle('armed', !!mobileArmedMods[el.dataset.mod]);
   });
 }
-document.querySelectorAll('#mobileModRow .mod-key').forEach(function(el){
+document.querySelectorAll('#mobileToolbar .mod-key').forEach(function(el){
   el.addEventListener('click', function(){
     var m = el.dataset.mod;
     mobileArmedMods[m] = !mobileArmedMods[m];
@@ -5038,24 +5110,63 @@ function dispatchMobileKey(key, code){
 document.getElementById('mobileEnterKey').addEventListener('click', function(){
   dispatchMobileKey('Enter');
 });
+document.getElementById('mobileEscKey').addEventListener('click', function(){
+  dispatchMobileKey('Escape');
+});
 ['mobileArrowUp','mobileArrowDown','mobileArrowLeft','mobileArrowRight'].forEach(function(id){
   var el = document.getElementById(id);
   el.addEventListener('click', function(){ dispatchMobileKey(el.dataset.arrow); });
 });
-// right-click stand-in: dispatches ⌃Enter, which is ALREADY the app's own
-// keyboard equivalent of a real right-click (opens the color/border style
-// popover — see the main keydown handler's own "⌃Enter mirrors ⌃click"
-// comment, and handleTreeRowKeydown's identical ev.ctrlKey+Enter branch
-// for tree rows) — no separate contextmenu-event synthesis needed at all.
-document.getElementById('mobileRightClickKey').addEventListener('click', function(){
-  mobileArmedMods.ctrl = true;
-  dispatchMobileKey('Enter');
+/* mobile drag-pickup toggle: "点击拖拽键→点节点拾取→移动→再点拖拽键放下".
+   Touch taps can't hold-and-drag the way a mouse does (see nodeMousedown's
+   own comment on synthetic touch mousedowns), so "移动" here means
+   repeatedly tapping a destination on blank canvas — each such tap
+   relocates the carried node there (see canvasWrap's mousedown listener)
+   — rather than one continuous pointer-follow drag. */
+var mobileDrag = { armed:false, node:null };
+var mobileDragKeyEl = document.getElementById('mobileDragKey');
+function mobileDragPick(n){
+  pushUndo();
+  mobileDrag.armed = false;
+  mobileDrag.node = n;
+  selectedId = n.id;
+  mobileDragKeyEl.classList.remove('armed');
+  mobileDragKeyEl.classList.add('carrying');
+  triggerGlow(); render();
+}
+function mobileDragMoveTo(clientX, clientY){
+  if(!mobileDrag.node) return;
+  var rect = canvasWrap.getBoundingClientRect();
+  var sx = clientX-rect.left, sy = clientY-rect.top;
+  mobileDrag.node.px = (sx-camera.x)/camera.scale;
+  mobileDrag.node.py = (sy-camera.y)/camera.scale;
+  scheduleSave();
+  render();
+}
+function mobileDragDrop(){
+  mobileDrag.node = null;
+  mobileDrag.armed = false;
+  mobileDragKeyEl.classList.remove('armed','carrying');
+}
+mobileDragKeyEl.addEventListener('click', function(){
+  if(mobileDrag.node){ mobileDragDrop(); return; }
+  mobileDrag.armed = !mobileDrag.armed;
+  mobileDragKeyEl.classList.toggle('armed', mobileDrag.armed);
 });
 var btnMobileMode = document.getElementById('btnMobileMode');
 var mobileToolbar = document.getElementById('mobileToolbar');
 function applyMobileMode(on){
-  mobileToolbar.style.display = on ? 'flex' : 'none';
+  document.documentElement.classList.toggle('mobile-mode', on);
   btnMobileMode.classList.toggle('active', on);
+  // shorten .param-label text under mobile mode (its own data-mobile
+  // attribute holds the short form; the original full text is stashed
+  // back into data-mobile itself on the way out so toggling mobile mode
+  // off restores the exact desktop string byte-for-byte).
+  document.querySelectorAll('#paramsFlyout .param-label[data-mobile]').forEach(function(el){
+    var alt = el.dataset.mobile;
+    el.dataset.mobile = el.textContent;
+    el.textContent = alt;
+  });
 }
 btnMobileMode.addEventListener('click', function(){
   appParams.mobileMode = !appParams.mobileMode;
