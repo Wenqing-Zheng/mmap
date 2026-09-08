@@ -130,6 +130,45 @@
   #railDepthMinus{font-size:calc(var(--rail-w)*0.28);font-weight:700;}
   #railDepthPlus{font-size:calc(var(--rail-w)*0.28);font-weight:700;}
   #railDepthValue{font-size:calc(var(--rail-w)*0.19);font-weight:700;}
+  /* mobile toolbar: Shift/Ctrl/Option/Cmd modifier toggles + Enter + 4
+     arrow keys + a right-click stand-in, all as touch-sized buttons
+     inside the rail — "手机模式...允许在手机上模拟键盘多个案件联合按下这些
+     组合快捷键". Hidden by default (display:none set inline); the
+     "手机模式" params-panel button toggles it on/off. Laid out as its own
+     mini-grid rather than reusing .rail-btn's single-icon sizing, since it
+     needs to fit 4 modifier toggles PLUS an arrow-pad PLUS a right-click
+     button all within the narrow rail column — "布局合理排版以适配手机端
+     打开". */
+  #mobileToolbar{
+    display:flex;flex-direction:column;align-items:center;gap:4px;
+    width:100%;padding:4px 0 8px;border-bottom:1px solid var(--panel-border);
+  }
+  .mobile-key{
+    display:flex;align-items:center;justify-content:center;user-select:none;
+    border-radius:6px;border:1px solid var(--panel-border);background:var(--bg);
+    color:var(--text-main);cursor:pointer;font-size:calc(var(--rail-w)*0.24);
+    transition:background .1s;
+  }
+  .mobile-key:hover{background:rgba(120,130,160,.12);}
+  /* a modifier toggle STAYS pressed/highlighted after being tapped (unlike
+     a real keyboard's momentary hold) — since touch has no "hold this key
+     down while tapping another" gesture, tapping a modifier instead ARMS
+     it for the NEXT key/arrow/click tap, then the modifier set is
+     consumed and cleared right after that tap fires — see
+     dispatchMobileKey's own comment. */
+  .mod-key.armed{background:var(--accent);color:#fff;border-color:var(--accent);}
+  #mobileModRow{
+    display:grid;grid-template-columns:1fr 1fr;gap:4px;width:calc(var(--rail-w)*0.85);
+  }
+  #mobileModRow .mobile-key{width:100%;height:calc(var(--rail-w)*0.42);}
+  #mobileEnterKey{width:calc(var(--rail-w)*0.85);height:calc(var(--rail-w)*0.42);}
+  #mobileArrowPad{
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    width:calc(var(--rail-w)*0.85);
+  }
+  #mobileArrowPad .mobile-key{width:calc(var(--rail-w)*0.42);height:calc(var(--rail-w)*0.36);}
+  #mobileArrowMidRow{display:flex;gap:3px;}
+  #mobileRightClickKey{width:calc(var(--rail-w)*0.85);height:calc(var(--rail-w)*0.42);font-size:calc(var(--rail-w)*0.26);}
   .rail-sep{width:calc(var(--rail-w)*0.5);height:1px;background:var(--panel-border);margin:6px 0;flex-shrink:0;}
   .rail-spacer{flex:1;}
   #railPinnedZone{
@@ -221,6 +260,7 @@
     color:var(--text-main);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;
   }
   .mini-btn:hover{background:rgba(120,130,160,.14);}
+  .mini-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
   #relaxSlider{width:100%;accent-color:var(--accent);}
 
   /* ---------- random-pick flyout ---------- */
@@ -519,6 +559,24 @@
     <button class="rail-btn" id="btnTree" title="树状视图">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
     </button>
+    <div id="mobileToolbar" style="display:none;">
+      <div id="mobileModRow">
+        <div class="mobile-key mod-key" data-mod="shift" title="Shift">⇧</div>
+        <div class="mobile-key mod-key" data-mod="ctrl" title="Control">⌃</div>
+        <div class="mobile-key mod-key" data-mod="alt" title="Option">⌥</div>
+        <div class="mobile-key mod-key" data-mod="meta" title="Command">⌘</div>
+      </div>
+      <div class="mobile-key" id="mobileEnterKey" title="Enter">⏎</div>
+      <div id="mobileArrowPad">
+        <div class="mobile-key" id="mobileArrowUp" data-arrow="ArrowUp" title="↑">▲</div>
+        <div id="mobileArrowMidRow">
+          <div class="mobile-key" id="mobileArrowLeft" data-arrow="ArrowLeft" title="←">◀</div>
+          <div class="mobile-key" id="mobileArrowRight" data-arrow="ArrowRight" title="→">▶</div>
+        </div>
+        <div class="mobile-key" id="mobileArrowDown" data-arrow="ArrowDown" title="↓">▼</div>
+      </div>
+      <div class="mobile-key" id="mobileRightClickKey" title="模拟右键">🖱</div>
+    </div>
     <div id="railDepthCtl" title="默认最大可视深度">
       <div id="railDepthMinus">‹</div>
       <div id="railDepthValue">2</div>
@@ -609,6 +667,12 @@
       <div class="param-label">全局视野</div>
       <div class="param-stepper" style="flex-wrap:wrap;">
         <button class="mini-btn" id="btnFit" title="回到全局">⛩</button>
+      </div>
+    </div>
+    <div class="param-block">
+      <div class="param-label">手机模式</div>
+      <div class="param-stepper" style="flex-wrap:wrap;">
+        <button class="mini-btn" id="btnMobileMode" title="在导航栏加入 Shift/Ctrl/Option/Cmd/Enter 及方向键、右键模拟按钮，方便手机端触屏组合出键盘快捷键">📱</button>
       </div>
     </div>
   </div>
@@ -709,7 +773,8 @@ var appParams = {
   maxAutoDepth: MAX_AUTO_DEPTH_DEFAULT,
   relaxStrength: RELAX_MIN,
   globalFontScale: GLOBAL_FONT_SCALE_DEFAULT,
-  expandCap: EXPAND_CAP_DEFAULT
+  expandCap: EXPAND_CAP_DEFAULT,
+  mobileMode: false
 };
 function loadParams(){
   try{
@@ -720,6 +785,7 @@ function loadParams(){
     if(typeof p.relaxStrength==='number') appParams.relaxStrength = clamp(p.relaxStrength, RELAX_MIN, RELAX_MAX);
     if(typeof p.globalFontScale==='number') appParams.globalFontScale = clamp(p.globalFontScale, GLOBAL_FONT_SCALE_MIN, GLOBAL_FONT_SCALE_MAX);
     if(typeof p.expandCap==='number') appParams.expandCap = clamp(p.expandCap, EXPAND_CAP_MIN, EXPAND_CAP_MAX);
+    if(typeof p.mobileMode==='boolean') appParams.mobileMode = p.mobileMode;
   }catch(e){}
 }
 function saveParams(){
@@ -4918,6 +4984,85 @@ document.getElementById('btnFit').addEventListener('click', function(){
   if(alreadyAtRoot){ resyncRootView(); }
 });
 
+/* ============================================================
+   mobile toolbar: touch-friendly Shift/Ctrl/Option/Cmd/Enter + arrow
+   keys + a right-click stand-in, all synthesizing REAL KeyboardEvents
+   dispatched at document — "允许在手机上模拟键盘多个案件联合按下这些组合
+   快捷键". Reusing the exact same document-level 'keydown' listener every
+   other shortcut in this file already goes through means every existing
+   handler (canvas, tree-view row, insert dialog, etc.) picks these up
+   with ZERO special-casing — a synthetic event with shiftKey/ctrlKey/
+   altKey/metaKey/key/code set correctly is indistinguishable from a real
+   one to any of those handlers.
+   Touch has no "hold this key while tapping another" gesture, so modifier
+   taps use a STICKY-KEYS model instead: tapping ⇧/⌃/⌥/⌘ ARMS it (stays
+   highlighted) until the NEXT arrow/Enter/right-click tap, which consumes
+   and clears the whole armed set right after firing — this is what lets
+   "⌘ then ↓" on a touchscreen produce the exact same ⌘+ArrowDown a real
+   keyboard chord would. Tapping an already-armed modifier again disarms
+   it (toggle), so combining multiple modifiers (⌥⇧ for batch-insert) or
+   backing out of one by mistake both just work. */
+var mobileArmedMods = {shift:false, ctrl:false, alt:false, meta:false};
+function refreshMobileModUI(){
+  document.querySelectorAll('#mobileModRow .mod-key').forEach(function(el){
+    el.classList.toggle('armed', !!mobileArmedMods[el.dataset.mod]);
+  });
+}
+document.querySelectorAll('#mobileModRow .mod-key').forEach(function(el){
+  el.addEventListener('click', function(){
+    var m = el.dataset.mod;
+    mobileArmedMods[m] = !mobileArmedMods[m];
+    refreshMobileModUI();
+  });
+});
+/* fires one synthetic keydown built from the currently-armed modifiers
+   plus whatever key/code this particular tap represents, then clears the
+   armed set — every mobile key tap (Enter, an arrow, or the right-click
+   stand-in) funnels through here so the "consume modifiers after one use"
+   rule is enforced in exactly one place. Batch-insert (⌥⇧↓, or its ⌥⇧B
+   fallback for macOS setups that swallow the arrow combo) is reachable on
+   mobile by arming ⌥+⇧ then tapping ↓ — a real ArrowDown key/code, so it
+   needs no e.code remapping workaround the way a literal 'B' key would. */
+function dispatchMobileKey(key, code){
+  var opts = {
+    key: key, code: code || key, bubbles: true, cancelable: true,
+    shiftKey: mobileArmedMods.shift, ctrlKey: mobileArmedMods.ctrl,
+    altKey: mobileArmedMods.alt, metaKey: mobileArmedMods.meta
+  };
+  var target = document.activeElement && document.activeElement!==document.body
+    ? document.activeElement : document;
+  target.dispatchEvent(new KeyboardEvent('keydown', opts));
+  mobileArmedMods.shift = mobileArmedMods.ctrl = mobileArmedMods.alt = mobileArmedMods.meta = false;
+  refreshMobileModUI();
+}
+document.getElementById('mobileEnterKey').addEventListener('click', function(){
+  dispatchMobileKey('Enter');
+});
+['mobileArrowUp','mobileArrowDown','mobileArrowLeft','mobileArrowRight'].forEach(function(id){
+  var el = document.getElementById(id);
+  el.addEventListener('click', function(){ dispatchMobileKey(el.dataset.arrow); });
+});
+// right-click stand-in: dispatches ⌃Enter, which is ALREADY the app's own
+// keyboard equivalent of a real right-click (opens the color/border style
+// popover — see the main keydown handler's own "⌃Enter mirrors ⌃click"
+// comment, and handleTreeRowKeydown's identical ev.ctrlKey+Enter branch
+// for tree rows) — no separate contextmenu-event synthesis needed at all.
+document.getElementById('mobileRightClickKey').addEventListener('click', function(){
+  mobileArmedMods.ctrl = true;
+  dispatchMobileKey('Enter');
+});
+var btnMobileMode = document.getElementById('btnMobileMode');
+var mobileToolbar = document.getElementById('mobileToolbar');
+function applyMobileMode(on){
+  mobileToolbar.style.display = on ? 'flex' : 'none';
+  btnMobileMode.classList.toggle('active', on);
+}
+btnMobileMode.addEventListener('click', function(){
+  appParams.mobileMode = !appParams.mobileMode;
+  applyMobileMode(appParams.mobileMode);
+  saveParams();
+});
+
 var themeBtn = document.getElementById('btnTheme');
 var themeIconMoon = document.getElementById('themeIconMoon');
 var themeIconSun = document.getElementById('themeIconSun');
@@ -5096,6 +5241,7 @@ function saveRailWidth(w){
 loadRailWidth();
 loadParams();
 refreshRailDepthUI();
+applyMobileMode(appParams.mobileMode);
 applyTheme();
 // pinned random-pick rail shortcuts otherwise only ever get (re)rendered
 // from renderRandomPanel() (when the panel opens) or the drag-to-pin drop
