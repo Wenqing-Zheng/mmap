@@ -261,6 +261,10 @@
   .mini-btn:hover{background:rgba(120,130,160,.14);}
   .mini-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
   #relaxSlider{width:100%;accent-color:var(--accent);}
+  /* 3-way display-mode switch (desktop/手机原始/手机精致) — exactly one
+     .ui-mode-btn carries .active (driven by applyUiMode), same visual
+     language as every other .mini-btn toggle in this panel. */
+  #uiModeSwitch{gap:6px;}
   /* small per-button caption under each "重置位置" icon, so what each of
      the three visually-identical-looking mini-btns actually does doesn't
      rely on hovering for a title tooltip alone. */
@@ -539,18 +543,46 @@
   }
   #insertDetail:empty::before{content:attr(data-ph);color:#b6bac4;}
   #insertDetail:focus{border-color:var(--accent);}
-  .id-cat-row{display:flex;gap:8px;margin-bottom:12px;}
+  .id-cat-row{display:flex;gap:8px;}
   .id-cat-btn{
     width:36px;height:30px;border-radius:8px;border:1px solid var(--panel-border);background:var(--bg);
     color:var(--text-main);cursor:pointer;font-size:13px;font-weight:700;
   }
   .id-cat-btn.sel{background:var(--accent);color:#fff;border-color:var(--accent);}
+  /* row holding the ABC category picker plus the two new importance/
+     proficiency steppers, all vertically centered and evenly spaced so
+     nothing looks lopsided next to the 3-button ABC group — "保证横竖左右
+     都对齐整洁美观". Importance (border-line count) and proficiency
+     (masterLevel) share the exact same +/- stepper look, just a different
+     label, to keep the row visually uniform. */
+  .id-cat-stat-row{display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap;}
+  .id-stat-col{display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .id-stat-label{font-size:10.5px;color:var(--text-dim);font-weight:600;white-space:nowrap;}
+  .id-stat-stepper{display:flex;align-items:center;gap:6px;}
+  .id-stat-stepper span{font-size:13px;color:var(--text-main);font-weight:600;min-width:14px;text-align:center;}
   #insertDialog .id-row{display:flex;justify-content:space-between;align-items:center;}
   #insertHintTxt{font-size:11px;color:var(--text-dim);}
   #insertDialog .id-actions{display:flex;gap:8px;}
   .id-btn{border:none;border-radius:9px;padding:7px 15px;font-size:12.5px;cursor:pointer;}
   .id-btn.primary{background:var(--accent);color:#fff;}
   .id-btn.plain{background:rgba(120,130,160,.14);color:var(--text-main);}
+
+  /* 手机精致模式's own edit-dialog re-layout: full-bleed page instead of a
+     floating centered card — "不要像电脑那样悬浮弹窗，而是直接手机全屏用
+     来编辑" — with padding pushed to a minimum so most of the screen is
+     actual text-editing space — "把边框的距离压到最低，把尽可能多的内容
+     留给文字". Every #insertDialog child selector already defined above
+     (labels/inputs/cat row/steppers/actions) keeps working unchanged
+     inside this new outer shell; only #insertOverlay/#insertDialog
+     themselves are resized here. */
+  html.mobile-compact-mode #insertOverlay{background:var(--bg);align-items:stretch;justify-content:stretch;}
+  html.mobile-compact-mode #insertDialog{
+    width:100%;height:100%;border-radius:0;box-shadow:none;
+    padding:clamp(10px,3vw,14px);display:flex;flex-direction:column;overflow-y:auto;
+  }
+  html.mobile-compact-mode #insertSummary{margin-bottom:8px;}
+  html.mobile-compact-mode #insertDetail{flex:1;min-height:0;margin-bottom:8px;}
+  html.mobile-compact-mode .id-cat-stat-row{margin-bottom:8px;}
 
   /* ---------- mobile mode: bottom nav bar + bottom-sheet flyouts ----------
      Everything below is gated under html.mobile-mode (toggled by
@@ -609,6 +641,206 @@
   html.mobile-mode #paramsFlyout .param-stepper span{font-size:11px;min-width:28px;}
   html.mobile-mode #paramsFlyout .mini-btn{width:24px;height:24px;font-size:12px;border-radius:7px;}
   html.mobile-mode .reset-btn-caption{font-size:8px;}
+
+  /* ============================================================
+     手机精致模式 (mobile-compact-mode): a from-scratch, app-like compact
+     UI layered on top of the SAME #app/#canvasWrap/#rail markup — "像一款
+     精心设计界面简洁美观的原生app". #rail itself, #mobileToolbar, and
+     every desktop/手机原始 flyout are simply hidden outright under this
+     class (compact mode has its own #compactBar/#compactMoreSheet/
+     #compactTreeSheet instead), so nothing about the OTHER two modes'
+     rendering can be perturbed by anything below — every rule here is
+     scoped under html.mobile-compact-mode and touches only compact-mode's
+     own new elements or #canvasWrap's outer layout slot.
+     Icon/font sizing throughout uses clamp()+vw so it "自动适配手机屏幕"
+     across phone widths without a separate breakpoint per device. ============================================================ */
+  #compactBar, #compactMoreSheet, #compactTreeSheet, #compactSearchSheet{display:none;}
+  html.mobile-compact-mode #rail, html.mobile-compact-mode #mobileToolbar,
+  html.mobile-compact-mode #treeFlyout, html.mobile-compact-mode #randomFlyout{
+    display:none;
+  }
+  /* #searchFlyout and #paramsFlyout are REUSED as-is (their bottom-sheet
+     CSS already applies under html.mobile-mode above) — cbSearch/
+     cbMoreParams simply forward clicks to the existing btnSearch/
+     btnParams rail buttons (see the compact-bar JS wiring), so their full
+     desktop logic (search-as-you-type, live param controls) works
+     unmodified instead of being duplicated for a third time. */
+  html.mobile-compact-mode #searchFlyout, html.mobile-compact-mode #paramsFlyout{
+    left:0;right:0;top:auto;bottom:0;width:100%;height:56vh;max-height:56vh;
+    border-right:none;border-top:1px solid var(--panel-border);border-radius:14px 14px 0 0;
+    transform:translateY(100%);z-index:850;
+  }
+  html.mobile-compact-mode #searchFlyout.open, html.mobile-compact-mode #paramsFlyout.open{
+    transform:translateY(0);
+  }
+  html.mobile-compact-mode #app{flex-direction:column;}
+  html.mobile-compact-mode #canvasWrap{order:1;flex:1;}
+  /* "控制台在最低下" — the one-and-only always-visible control surface in
+     this mode, pinned to the bottom, above everything else in #app. */
+  html.mobile-compact-mode #compactBar{
+    display:flex;flex-direction:column;order:2;width:100%;
+    background:var(--panel-bg);border-top:1px solid var(--panel-border);
+    padding:clamp(4px,1.2vw,8px) clamp(6px,2vw,12px);gap:clamp(3px,1vw,6px);
+    box-sizing:border-box;
+  }
+  #compactBarRow1{display:flex;align-items:center;gap:clamp(4px,1.5vw,10px);}
+  .compact-btn{
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    width:clamp(34px,10vw,46px);height:clamp(34px,10vw,46px);
+    border-radius:clamp(8px,2vw,12px);border:1px solid var(--panel-border);
+    background:var(--bg);color:var(--text-main);cursor:pointer;
+  }
+  .compact-btn svg{width:55%;height:55%;}
+  .compact-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  /* random-pick buttons render into here (see renderCompactRandomZone) —
+     each one is its OWN first-class button, same footprint as any other
+     compact-btn, laid out in a horizontally-scrollable strip so an
+     arbitrary number of custom buttons never breaks the one-row layout. */
+  #compactRandomZone{
+    display:flex;align-items:center;gap:clamp(3px,1vw,6px);flex:1;min-width:0;
+    overflow-x:auto;
+  }
+  .compact-rb-btn{
+    flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    height:clamp(34px,10vw,46px);padding:0 clamp(8px,2.4vw,14px);
+    border-radius:clamp(8px,2vw,12px);border:1px solid var(--panel-border);
+    background:var(--bg);color:var(--text-main);cursor:pointer;
+    font-size:clamp(11px,2.6vw,13px);font-weight:600;white-space:nowrap;
+  }
+  /* depth control: same three-part </N/> widget as desktop's
+     #railDepthCtl, just re-skinned as three near-square buttons per
+     "子节点展开深度（左中右三部分和电脑一样，但近似三个正方形按钮）". */
+  #compactDepthCtl{
+    display:flex;flex-shrink:0;border-radius:clamp(8px,2vw,12px);overflow:hidden;
+    border:1px solid var(--panel-border);
+  }
+  #compactDepthCtl > div{
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    width:clamp(28px,7.5vw,36px);height:clamp(34px,10vw,46px);
+    background:var(--bg);color:var(--text-main);font-weight:700;
+    font-size:clamp(13px,3vw,16px);user-select:none;
+  }
+  #compactDepthCtl > div + div{border-left:1px solid var(--panel-border);}
+  #compactDepthCtl > div.pressed{background:rgba(120,130,160,.18);}
+  #compactBarRow2{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
+  #compactRelaxLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
+  #compactRelaxSlider{width:100%;accent-color:var(--accent);}
+
+  /* "二等公民" overflow sheet — every button the compact bar itself has no
+     room for (params/theme/import-export/fit/reset-position/mode-switch)
+     lives here instead, opened via cbMore. Bottom sheet, same slide-up
+     language as the "手机原始模式" flyouts already use. */
+  html.mobile-compact-mode #compactMoreSheet{
+    display:flex;flex-direction:column;position:fixed;left:0;right:0;bottom:0;
+    height:60vh;max-height:60vh;background:var(--panel-bg);
+    border-top:1px solid var(--panel-border);border-radius:14px 14px 0 0;
+    box-shadow:var(--shadow);z-index:900;transform:translateY(100%);
+    transition:transform .18s ease;
+  }
+  html.mobile-compact-mode #compactMoreSheet.open{transform:translateY(0);}
+  #compactMoreHead{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:clamp(10px,3vw,14px);font-size:clamp(12px,3vw,14px);font-weight:700;
+    color:var(--text-main);border-bottom:1px solid var(--panel-border);flex-shrink:0;
+  }
+  #compactMoreClose{cursor:pointer;color:var(--text-dim);font-size:clamp(14px,3.6vw,17px);}
+  #compactMoreGrid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,2.4vw,12px);
+    padding:clamp(10px,3vw,14px);overflow-y:auto;
+  }
+  .compact-more-btn{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    aspect-ratio:1;border-radius:clamp(8px,2vw,12px);border:1px solid var(--panel-border);
+    background:var(--bg);color:var(--text-main);cursor:pointer;
+    font-size:clamp(9px,2.2vw,11px);font-weight:600;line-height:1.3;
+  }
+  .compact-more-btn:active{background:rgba(120,130,160,.14);}
+
+  /* compact-mode tree view: near-fullscreen sheet (not the 60vh "more"
+     sheet height — a tree needs to show as many rows as possible) sliding
+     up from the bottom, closed via the back chevron, a left-edge swipe, or
+     a downward swipe from mid-sheet — "左上角<按钮或者屏幕左侧内滑或者屏幕
+     中间下滑关闭". Only A/B rows ever render here (see
+     renderCompactTreeView) — "只显示AB类，不显示C类节点". */
+  html.mobile-compact-mode #compactTreeSheet{
+    display:flex;flex-direction:column;position:fixed;left:0;right:0;bottom:0;
+    height:88vh;max-height:88vh;background:var(--panel-bg);
+    border-top:1px solid var(--panel-border);border-radius:14px 14px 0 0;
+    box-shadow:var(--shadow);z-index:900;transform:translateY(100%);
+    transition:transform .18s ease;
+  }
+  html.mobile-compact-mode #compactTreeSheet.open{transform:translateY(0);}
+  #compactTreeHead{
+    display:flex;align-items:center;gap:8px;flex-shrink:0;
+    padding:clamp(10px,3vw,14px);font-size:clamp(12px,3vw,14px);font-weight:700;
+    color:var(--text-main);border-bottom:1px solid var(--panel-border);
+  }
+  #compactTreeBack{cursor:pointer;font-size:clamp(18px,4.4vw,22px);font-weight:700;color:var(--text-dim);}
+  #compactTreeList{flex:1;overflow-y:auto;padding:6px;}
+  .ctv-row{
+    display:flex;align-items:center;gap:8px;padding:clamp(7px,2vw,10px) clamp(6px,2vw,10px);
+    border-radius:9px;cursor:pointer;font-size:clamp(12px,3vw,14px);color:var(--text-main);
+  }
+  .ctv-row:active{background:rgba(120,130,160,.14);}
+  /* the tag ("A(1,1)"/"B(3,2)") is its OWN tap target — tapping it jumps
+     to that node as root and closes the sheet — separate from tapping the
+     row body, which instead only expands/collapses — "点击节点左侧A(1,1)
+     将会跳转到节点作为跟节点...点击节点中心将会展开和折叠孩子节点". */
+  .ctv-tag{
+    flex-shrink:0;font-size:clamp(10px,2.6vw,12px);font-weight:700;color:#fff;
+    padding:2px clamp(5px,1.6vw,7px);border-radius:6px;letter-spacing:.2px;
+  }
+  .ctv-tag[data-cat="A"]{background:#4361ee;}
+  .ctv-tag[data-cat="B"]{background:#d1495b;}
+  .ctv-summary{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* "折叠起来孩子的，节点周围有一圈额外边框。没有孩子的没有边框" — a ring
+     drawn only on rows that HAVE at least one A/B child but are currently
+     collapsed; a leaf (no A/B children at all, C children don't count)
+     gets no ring regardless of drilled state. */
+  .ctv-row.ctv-collapsed{box-shadow:inset 0 0 0 1.5px var(--panel-border);}
+
+  /* long-press action sheet (edit / insert parent / sibling / batch) —
+     bottom-anchored list of full-width buttons, simplest possible
+     "picker" pattern for a handful of mutually-exclusive actions. */
+  #compactActionSheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:1200;
+    display:flex;flex-direction:column;gap:1px;
+    padding:clamp(8px,2.4vw,12px);padding-bottom:calc(clamp(8px,2.4vw,12px) + env(safe-area-inset-bottom, 0px));
+    background:var(--panel-bg);border-top:1px solid var(--panel-border);
+    border-radius:14px 14px 0 0;box-shadow:var(--shadow);
+  }
+  .compact-action-btn{
+    padding:clamp(11px,3.2vw,14px);border-radius:10px;border:none;background:transparent;
+    color:var(--text-main);font-size:clamp(13px,3.4vw,15px);text-align:center;cursor:pointer;
+  }
+  .compact-action-btn:active{background:rgba(120,130,160,.14);}
+  .compact-action-cancel{color:var(--text-dim);margin-top:4px;border-top:1px solid var(--panel-border);border-radius:0;}
+
+  /* detail-fullscreen editor — "双击节点，可以让detail展开到全屏". Plain
+     full-bleed page, no floating-dialog chrome per "不要像电脑那样悬浮
+     弹窗，而是直接手机全屏" — margins are pushed down to almost nothing so
+     "把尽可能多的内容留给文字". */
+  #compactDetailFullscreen{
+    position:fixed;inset:0;z-index:1300;background:var(--bg);
+    display:flex;flex-direction:column;padding:clamp(10px,3vw,16px);
+  }
+  #compactDetailHead{
+    font-size:clamp(14px,3.6vw,17px);font-weight:700;color:var(--text-main);
+    margin-bottom:clamp(8px,2.4vw,12px);flex-shrink:0;
+  }
+  #compactDetailBody{
+    flex:1;overflow-y:auto;font-size:clamp(13px,3.4vw,15px);color:var(--text-main);
+    line-height:1.5;outline:none;white-space:pre-wrap;
+  }
+
+  /* "折叠起来孩子的，节点周围有一圈额外边框" — a thin extra ring drawn on
+     any canvas node that has A/B children currently collapsed, ONLY in
+     手机精致模式 (desktop/手机原始模式 already have their own "*"
+     expand-star badge for this and must stay pixel-identical). */
+  html.mobile-compact-mode .mm-node.compact-collapsed-ring > .mm-frame,
+  html.mobile-compact-mode .mm-node.compact-collapsed-ring > .mm-miniature-inner > .mm-frame{
+    box-shadow:var(--node-shadow), inset 0 0 0 3px var(--node-border,var(--accent));
+  }
 </style>
 </head>
 <body>
@@ -660,6 +892,54 @@
       </svg>
     </button>
     <div id="railResizer" title="拖拽调整导航栏宽度"></div>
+  </div>
+
+  <div id="compactBar">
+    <div id="compactBarRow1">
+      <button class="compact-btn" id="cbSearch" title="搜索">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg>
+      </button>
+      <button class="compact-btn" id="cbTree" title="树状视图">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
+      </button>
+      <div id="compactRandomZone"></div>
+      <button class="compact-btn" id="cbNavMode" title="导航模式：开启后触摸手势用于拖拽/变色/变形/退回上一级，而非可见性/大小/重要度">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 15 8 21 9 16.5 13.2 17.6 19.5 12 16.4 6.4 19.5 7.5 13.2 3 9 9 8 12 2Z"/></svg>
+      </button>
+      <div id="compactDepthCtl" title="默认最大可视深度">
+        <div id="compactDepthMinus">‹</div>
+        <div id="compactDepthValue">2</div>
+        <div id="compactDepthPlus">›</div>
+      </div>
+      <button class="compact-btn" id="cbMore" title="更多">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+    <div id="compactBarRow2">
+      <span id="compactRelaxLabel">防碰撞强度</span>
+      <input type="range" id="compactRelaxSlider" min="0" max="100" step="1">
+    </div>
+  </div>
+
+  <div id="compactMoreSheet">
+    <div id="compactMoreHead">其他功能<span id="compactMoreClose">✕</span></div>
+    <div id="compactMoreGrid">
+      <button class="compact-more-btn" id="cbMoreParams">⚙<br>布局参数</button>
+      <button class="compact-more-btn" id="cbMoreTheme">🎨<br>切换主题</button>
+      <button class="compact-more-btn" id="cbMoreImport">🚢<br>导入 JSON</button>
+      <button class="compact-more-btn" id="cbMoreExport">🚁<br>导出 JSON</button>
+      <button class="compact-more-btn" id="cbMoreFit">⛩<br>回到全局</button>
+      <button class="compact-more-btn" id="cbMoreResetVisible">⭕️<br>局部重排</button>
+      <button class="compact-more-btn" id="cbMoreResetAll">💣<br>全树重排</button>
+      <button class="compact-more-btn" id="cbMoreCenter">🎯<br>仅居中</button>
+      <button class="compact-more-btn" id="cbMoreDesktop">🖥<br>返回电脑模式</button>
+      <button class="compact-more-btn" id="cbMoreRaw">📱<br>手机原始模式</button>
+    </div>
+  </div>
+
+  <div id="compactTreeSheet">
+    <div id="compactTreeHead"><span id="compactTreeBack">‹</span>树状视图</div>
+    <div id="compactTreeList"></div>
   </div>
 
   <div id="searchFlyout">
@@ -736,9 +1016,11 @@
       </div>
     </div>
     <div class="param-block">
-      <div class="param-label">手机模式</div>
-      <div class="param-stepper" style="flex-wrap:wrap;">
-        <button class="mini-btn" id="btnMobileMode" title="导航栏移到底部，加入 Shift/Ctrl/Option/Cmd/Enter/Esc/方向键/拖拽 触屏按钮，面板改为从底部弹出">📱</button>
+      <div class="param-label">显示模式</div>
+      <div class="param-stepper" id="uiModeSwitch" style="flex-wrap:wrap;">
+        <button class="mini-btn ui-mode-btn" data-mode="desktop" title="电脑模式：完整功能，左侧导航栏">🖥</button>
+        <button class="mini-btn ui-mode-btn" data-mode="mobile-raw" title="手机原始模式：底部导航栏+触屏模拟键盘快捷键，功能与电脑版一致">📱</button>
+        <button class="mini-btn ui-mode-btn" data-mode="mobile-compact" title="手机精致模式：为手机触屏重新设计的简洁界面，省略复杂编辑功能">✨</button>
       </div>
     </div>
   </div>
@@ -755,11 +1037,29 @@
     <div id="insertSummary" contenteditable="true" data-ph="节点摘要…"></div>
     <div class="id-label">Detail</div>
     <div id="insertDetail" contenteditable="true" data-ph="节点详情…"></div>
-    <div class="id-label">分类</div>
-    <div class="id-cat-row" id="insertCatRow">
-      <button class="id-cat-btn" data-cat="A">A</button>
-      <button class="id-cat-btn" data-cat="B">B</button>
-      <button class="id-cat-btn" data-cat="C">C</button>
+    <div class="id-label">分类 / 重要度 / 熟练度</div>
+    <div class="id-cat-stat-row">
+      <div class="id-cat-row" id="insertCatRow">
+        <button class="id-cat-btn" data-cat="A">A</button>
+        <button class="id-cat-btn" data-cat="B">B</button>
+        <button class="id-cat-btn" data-cat="C">C</button>
+      </div>
+      <div class="id-stat-col">
+        <span class="id-stat-label">重要度</span>
+        <div class="id-stat-stepper" id="insertBorderLinesStepper">
+          <button class="mini-btn" data-dir="-1">－</button>
+          <span id="insertBorderLinesValue">1</span>
+          <button class="mini-btn" data-dir="1">＋</button>
+        </div>
+      </div>
+      <div class="id-stat-col">
+        <span class="id-stat-label">熟练度</span>
+        <div class="id-stat-stepper" id="insertMasterLevelStepper">
+          <button class="mini-btn" data-dir="-1">－</button>
+          <span id="insertMasterLevelValue">3</span>
+          <button class="mini-btn" data-dir="1">＋</button>
+        </div>
+      </div>
     </div>
     <div class="id-row">
       <span id="insertHintTxt"></span>
@@ -840,7 +1140,11 @@ var appParams = {
   relaxStrength: RELAX_MIN,
   globalFontScale: GLOBAL_FONT_SCALE_DEFAULT,
   expandCap: EXPAND_CAP_DEFAULT,
-  mobileMode: false
+  // 'desktop' | 'mobile-raw' | 'mobile-compact' — three mutually exclusive
+  // display modes, switched via #uiModeSwitch's 3-way button group. Only
+  // ONE of html.mobile-mode / html.mobile-compact-mode is ever applied at
+  // a time (see applyUiMode) — desktop is simply neither class present.
+  uiMode: 'desktop'
 };
 function loadParams(){
   try{
@@ -851,7 +1155,15 @@ function loadParams(){
     if(typeof p.relaxStrength==='number') appParams.relaxStrength = clamp(p.relaxStrength, RELAX_MIN, RELAX_MAX);
     if(typeof p.globalFontScale==='number') appParams.globalFontScale = clamp(p.globalFontScale, GLOBAL_FONT_SCALE_MIN, GLOBAL_FONT_SCALE_MAX);
     if(typeof p.expandCap==='number') appParams.expandCap = clamp(p.expandCap, EXPAND_CAP_MIN, EXPAND_CAP_MAX);
-    if(typeof p.mobileMode==='boolean') appParams.mobileMode = p.mobileMode;
+    // 'mobileMode' boolean is the OLD (pre-3-way-switch) storage format —
+    // migrate it forward into the new uiMode enum so a returning user's
+    // prior on/off choice survives as "mobile-raw" (the mode the old
+    // toggle actually controlled) instead of silently resetting to desktop.
+    if(typeof p.uiMode==='string' && ['desktop','mobile-raw','mobile-compact'].indexOf(p.uiMode)!==-1){
+      appParams.uiMode = p.uiMode;
+    } else if(typeof p.mobileMode==='boolean'){
+      appParams.uiMode = p.mobileMode ? 'mobile-raw' : 'desktop';
+    }
   }catch(e){}
 }
 function saveParams(){
@@ -868,6 +1180,7 @@ var COLOR_PRESETS = [
 ];
 var BORDER_STYLES = ['solid','dashed','wave-thin','wave-thick'];
 var BORDER_LINES_MIN = 1, BORDER_LINES_MAX = 5, BORDER_LINES_DEFAULT = 1;
+var MASTER_LEVEL_MIN = 1, MASTER_LEVEL_MAX = 5, MASTER_LEVEL_DEFAULT = 3;
 
 var BASE_FONT = 30;        // baseline font size at sizeLevel=5 (default) — ~2x the old 14.5px
 var BASE_DIAM = 190;       // baseline circular diameter at sizeLevel=5 — ~2x the old 92px
@@ -1349,6 +1662,21 @@ function setNodeCategory(id, cat){
     });
   }
 }
+/* importance (borderLines) and proficiency (masterLevel) edits propagate
+   DOWNWARD ONLY, into every A/B descendant (never C, since C nodes don't
+   carry either stat; never upward to ancestors; never sideways to
+   siblings) — "会向下传播到所有的A类型和B类型的子节点...不会向上传播...
+   不会影响到邻居同层次的兄弟姐妹". This is a one-time push, not a
+   permanent lock: propagated descendants can still be edited independently
+   afterward, and doing so does NOT propagate back up or re-lock anything —
+   "不会强制以后每次都锁定". field is 'borderLines' or 'masterLevel'. */
+function propagateStatDown(id, field, value){
+  subtreeIds(id).forEach(function(cid){
+    var c = node(cid);
+    if(c && c.category!=='C') c[field] = value;
+  });
+}
+
 function addChild(parentId, summary, detail){
   var pn = node(parentId); if(!pn) return null;
   var id = uid('n');
@@ -2329,6 +2657,12 @@ function applyFrameStyle(nodeEl, frameEl, n, w, h, shape){
   nodeEl.style.setProperty('--node-fill', fill);
   nodeEl.style.setProperty('--node-border', border);
   var el = frameEl;
+  // 手机精致模式一律按圆角矩形显示，不区分circle/ellipse/rect —
+  // "手机版一律按圆角矩形显示。最大限度保护文字大小。不要让边框占据太大
+  // 面积" — overriding the shape here (not upstream in computeNodeBox)
+  // means every size/layout计算 stays byte-for-byte identical between
+  // modes; only the FINAL rendered corner style changes.
+  if(document.documentElement.classList.contains('mobile-compact-mode')) shape = 'rect';
   var radius = shape==='circle' ? '50%' : (shape==='ellipse' ? '50%' : Math.min(26, Math.min(w,h)*0.16)+'px');
   var cornerR = shape==='circle' ? Math.min(w,h)/2 : (shape==='ellipse' ? Math.min(w,h)/2 : Math.min(26, Math.min(w,h)*0.16));
   el.style.borderRadius = radius;
@@ -2560,6 +2894,13 @@ function buildContainerTree(n, isRoot){
   el.style.height = box.h+'px';
   if(selectedId===n.id) el.classList.add('mm-selected');
   if(selectedId===n.id && glowingUntilClear) el.classList.add('mm-glow');
+  // 手机精致模式's own "折叠起来孩子的，节点周围有一圈额外边框" indicator —
+  // desktop/手机原始模式 already show this via the "*" expand-star badge
+  // instead, so this class is purely additive (see its CSS, scoped under
+  // html.mobile-compact-mode) and never affects either other mode.
+  if(!isRoot && !n.drilled && kids.some(function(k){ return k.category!=='C'; })){
+    el.classList.add('compact-collapsed-ring');
+  }
 
   var inner = el;
   if(scale < 1){
@@ -2699,21 +3040,15 @@ function buildCategoryBadge(n){
 }
 /* "M1".."M5" badge, immediately right of the ABC badge, ONLY for
    category==='B' nodes while catEditMode is active — "所有B类型节点的B符号
-   右边额外出现一个M_符号". Clicking cycles masterLevel 1->2->3->4->5->1;
-   masterLevel has no other editing surface (the popover only displays it,
-   see openStylePopover) since this in-place badge IS the edit control. */
+   右边额外出现一个M_符号". Read-only display only: masterLevel editing now
+   happens exclusively in the insert/edit dialog's stepper (see
+   insertMasterLevelStepper) — "把这种编辑方式取消掉,换成在编辑节点基本
+   信息的地方编辑". */
 function buildMasterBadge(n){
   var badge = document.createElement('div');
   badge.className = 'mm-master-badge';
   badge.textContent = 'M'+n.masterLevel;
-  badge.title = '点击切换熟练度（当前：M'+n.masterLevel+'）';
-  badge.addEventListener('mousedown', function(ev){
-    ev.stopPropagation();
-    pushUndo();
-    n.masterLevel = n.masterLevel>=5 ? 1 : n.masterLevel+1;
-    scheduleSave();
-    render();
-  });
+  badge.title = '熟练度：M'+n.masterLevel+'（在编辑框中修改）';
   return badge;
 }
 /* right-corner "*" badge shown on any node that has direct children but is
@@ -2824,6 +3159,16 @@ function buildNodeContent(n, box){
 function nodeMousedown(ev, el, n){
   if(ev.target.closest('.pop') || ev.target.closest('.mm-expand-star')) return;
   ev.stopPropagation();
+  // 手机精致模式 has its own, completely separate touch-gesture vocabulary
+  // (tap/double-tap/long-press/drag-axis all mean different things than
+  // desktop's alt/meta/shift+click) — delegating here and returning
+  // immediately means NONE of the modifier-key logic below can ever run
+  // while this mode is active, and conversely nothing about that logic
+  // changes for desktop/手机原始模式 (neither of which sets this class).
+  if(document.documentElement.classList.contains('mobile-compact-mode')){
+    compactNodeMousedown(ev, el, n);
+    return;
+  }
   // canvas nodes are never themselves focusable (no tabindex), so clicking
   // one never moves document.activeElement away from wherever it was
   // before — e.g. a rail button, or an <input>/<textarea> inside a still-
@@ -2953,6 +3298,232 @@ function startNodeDrag(ev, el, n){
 }
 
 /* ============================================================
+   手机精致模式: touch-gesture engine for canvas nodes.
+   Two entirely separate gesture vocabularies depending on navModeOn
+   (see the compact bar's cbNavMode toggle):
+
+   导航模式关闭 (navModeOn=false, the default):
+     - tap a leaf (or a collapsed branch)  -> cycle visibility (hidden/summary/detail)
+     - double-tap a leaf                   -> open detail fullscreen (compactDetailFullscreen)
+     - tap a branch (children shown)       -> batch-cycle visibility of whole subtree
+     - horizontal drag                     -> adjust importance (borderLines, ±1 per ~40px)
+     - vertical drag                       -> adjust size (scale ×1.1 per ~40px, same crowd-avoid math as desktop ⌘+/-)
+     - long-press                          -> compactActionSheet (edit / insert parent / insert sibling / batch insert)
+   导航模式开启 (navModeOn=true):
+     - vertical drag                       -> cycle color preset
+     - horizontal drag                     -> cycle border style
+     - long-press + drag                   -> reposition (same collision-avoid drag as startNodeDrag)
+     - double-tap                          -> become focus root (like desktop Shift+Enter)
+   Both modes: pinch (2-finger) on blank canvas -> go up one level (like desktop Shift+Up).
+   ============================================================ */
+var LONG_PRESS_MS = 480;
+var DRAG_AXIS_PX = 40; // px of movement per one "step" of whichever axis-mapped stat is being adjusted
+function compactNodeMousedown(ev, el, n){
+  var startX = ev.clientX, startY = ev.clientY;
+  var longPressTimer = null, longPressFired = false, axisLocked = null, appliedSteps = 0;
+  var startBorderLines = n.borderLines||1, startColorIdx = n.color||0, startBorderIdx = BORDER_STYLES.indexOf(n.border);
+  if(startBorderIdx<0) startBorderIdx = 0;
+  var didDrag = false;
+
+  function clearLongPress(){ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; } }
+  longPressTimer = setTimeout(function(){
+    longPressFired = true;
+    if(navModeOn){
+      // 导航模式's long-press meaning is "start a reposition drag" — reuse
+      // the EXACT SAME collision-avoid drag desktop already has, just
+      // gated behind a long-press instead of firing on every mousedown.
+      startNodeDrag(ev, el, n);
+    } else {
+      openCompactActionSheet(n);
+    }
+  }, LONG_PRESS_MS);
+
+  function onMove(e){
+    if(longPressFired) return; // navModeOn's drag branch takes over via startNodeDrag's own listeners
+    var dx = e.clientX-startX, dy = e.clientY-startY;
+    if(!axisLocked && (Math.abs(dx)>10 || Math.abs(dy)>10)){
+      axisLocked = Math.abs(dx)>Math.abs(dy) ? 'x' : 'y';
+      clearLongPress();
+    }
+    if(!axisLocked) return;
+    didDrag = true;
+    if(!navModeOn){
+      if(axisLocked==='x'){
+        // 重要度: right = +1, left = -1 per DRAG_AXIS_PX, clamped 1-5
+        var steps = Math.trunc(dx/DRAG_AXIS_PX);
+        var nv = clamp(startBorderLines+steps, BORDER_LINES_MIN, BORDER_LINES_MAX);
+        if(nv!==n.borderLines){ n.borderLines = nv; render(); }
+      } else {
+        // 大小: up = bigger, down = smaller, same 1.1x/0.9x-per-step and
+        // crowd-avoid interaction as desktop's ⌘+/⌘- (nodeMousedown's own
+        // effMeta-less path reads scaleXKids/scaleXNoKids the same way).
+        var steps2 = Math.trunc(-dy/DRAG_AXIS_PX);
+        if(steps2!==appliedSteps){
+          var factor = Math.pow(1.1, steps2-appliedSteps);
+          if(n.drilled){ n.scaleXKids*=factor; n.scaleYKids*=factor; }
+          else { n.scaleXNoKids*=factor; n.scaleYNoKids*=factor; }
+          appliedSteps = steps2;
+          render();
+        }
+      }
+    } else {
+      if(axisLocked==='y'){
+        // 颜色: one step per DRAG_AXIS_PX of vertical movement, cycling
+        // through COLOR_PRESETS (wraps both directions).
+        var cSteps = Math.trunc(-dy/DRAG_AXIS_PX);
+        var cIdx = ((startColorIdx+cSteps)%COLOR_PRESETS.length+COLOR_PRESETS.length)%COLOR_PRESETS.length;
+        if(cIdx!==n.color){ n.color = cIdx; render(); }
+      } else {
+        // 边框形状: same idea, cycling BORDER_STYLES.
+        var bSteps = Math.trunc(dx/DRAG_AXIS_PX);
+        var bIdx = ((startBorderIdx+bSteps)%BORDER_STYLES.length+BORDER_STYLES.length)%BORDER_STYLES.length;
+        if(BORDER_STYLES[bIdx]!==n.border){ n.border = BORDER_STYLES[bIdx]; render(); }
+      }
+    }
+  }
+  function onUp(){
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    clearLongPress();
+    if(longPressFired) return; // openCompactActionSheet or startNodeDrag already took over
+    if(didDrag){
+      pushUndo(); // snapshot AFTER the fact is fine here since nothing else mutated state mid-drag except this gesture's own fields
+      scheduleSave();
+      render();
+      return;
+    }
+    // no long-press, no drag -> a plain tap.
+    compactNodeTap(n, ev);
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+/* leaf here means "no A/B children currently showing" — matches
+   nodeMousedown's own drilled-gated branch-vs-leaf distinction, just
+   filtered to A/B like the rest of 手机精致模式 (C children never count). */
+function compactIsBranch(n){
+  return n.drilled && children(n.id).some(function(c){ return c.category!=='C'; });
+}
+function compactNodeTap(n, ev){
+  if(navModeOn){
+    if(isDoubleClick('compact:'+n.id, ev)){
+      // 双击：设为可见区域根节点，等价 shift+enter
+      pushUndo();
+      n.drilled = true;
+      state.focusId = n.id;
+      selectedId = null;
+      scheduleSave(); render();
+    }
+    return;
+  }
+  if(isDoubleClick('compact:'+n.id, ev)){
+    // 双击叶子节点：detail全屏
+    openCompactDetailFullscreen(n);
+    return;
+  }
+  pushUndo();
+  if(compactIsBranch(n)){
+    var subtree = subtreeIds(n.id).map(node).filter(function(x){ return x && x.category!=='C'; });
+    cycleVisBatch(subtree);
+    // "所有已经展开孩子的节点，永远保持至少summary可见" — a drilled node
+    // in the batch must never land on vis=0 even though cycleVisBatch's
+    // own 0/1/2 rotation would otherwise take it there in lockstep with
+    // its (possibly-leaf) siblings.
+    subtree.forEach(function(x){ if(x.drilled && x.vis===0) x.vis = 1; });
+  } else {
+    cycleVis(n);
+  }
+  selectedId = n.id;
+  scheduleSave();
+  triggerGlow();
+  render();
+}
+/* long-press action sheet: edit / insert parent / insert sibling(s) /
+   batch-insert children — "长按节点，可以选择编辑内容，插入父节点，添加
+   兄弟节点，批量添加兄弟节点". Built fresh each open rather than living in
+   static HTML since it has no persistent state worth keeping around. */
+var compactActionSheetEl = null;
+function closeCompactActionSheet(){
+  if(compactActionSheetEl){ compactActionSheetEl.remove(); compactActionSheetEl = null; }
+}
+function openCompactActionSheet(n){
+  closeCompactActionSheet();
+  var sheet = document.createElement('div');
+  sheet.id = 'compactActionSheet';
+  var actions = [
+    {label:'编辑内容', fn:function(){ openInsertDialog({mode:'edit', node:n}); }},
+    {label:'插入父节点', fn:function(){ openInsertDialog({mode:'parent', anchorId:n.id}); }},
+    {label:'添加兄弟节点', fn:function(){ openInsertDialog({mode:'sibling', anchorId:n.id, dir:1}); }},
+    {label:'批量添加兄弟节点', fn:function(){ openInsertDialog({mode:'sibling', anchorId:n.id, dir:1, batch:true}); }}
+  ];
+  actions.forEach(function(a){
+    var b = document.createElement('button');
+    b.className = 'compact-action-btn';
+    b.textContent = a.label;
+    b.addEventListener('click', function(){ closeCompactActionSheet(); a.fn(); });
+    sheet.appendChild(b);
+  });
+  var cancel = document.createElement('button');
+  cancel.className = 'compact-action-btn compact-action-cancel';
+  cancel.textContent = '取消';
+  cancel.addEventListener('click', closeCompactActionSheet);
+  sheet.appendChild(cancel);
+  document.body.appendChild(sheet);
+  compactActionSheetEl = sheet;
+  setTimeout(function(){ document.addEventListener('mousedown', closeActionSheetOnce, {capture:true}); }, 0);
+}
+function closeActionSheetOnce(e){ if(!e.target.closest('#compactActionSheet')) closeCompactActionSheet(); }
+
+/* double-tap-to-fullscreen for a leaf node's detail text — "双击节点，可以
+   让detail展开到全屏，并且可以自动保存". Closed via a downward swipe or a
+   left-edge-inward swipe (same dismiss gestures as compactTreeSheet),
+   auto-saving on every keystroke (scheduleSave already debounces) so
+   there is no separate explicit save step to forget. */
+var compactDetailEl = null, compactDetailNode = null;
+function openCompactDetailFullscreen(n){
+  closeCompactDetailFullscreen();
+  compactDetailNode = n;
+  var wrap = document.createElement('div');
+  wrap.id = 'compactDetailFullscreen';
+  var head = document.createElement('div');
+  head.id = 'compactDetailHead';
+  head.textContent = richToPlain(n.summary) || '(未命名)';
+  var body = document.createElement('div');
+  body.id = 'compactDetailBody';
+  body.contentEditable = 'true';
+  body.innerHTML = n.detail||'';
+  body.addEventListener('input', function(){
+    n.detail = sanitizeRich(body.innerHTML);
+    scheduleSave();
+  });
+  wrap.appendChild(head); wrap.appendChild(body);
+  document.body.appendChild(wrap);
+  compactDetailEl = wrap;
+  (function(){
+    var startX=0, startY=0, tracking=false, fromLeftEdge=false;
+    wrap.addEventListener('mousedown', function(ev){
+      if(ev.target===body) return; // don't hijack normal text-editing taps/drags inside the editable body
+      startX=ev.clientX; startY=ev.clientY; tracking=true;
+      fromLeftEdge = ev.clientX<24;
+    });
+    window.addEventListener('mousemove', function(ev){
+      if(!tracking) return;
+      var dx=ev.clientX-startX, dy=ev.clientY-startY;
+      if((fromLeftEdge && dx>70) || (!fromLeftEdge && dy>70 && Math.abs(dx)<60)){
+        tracking=false;
+        closeCompactDetailFullscreen();
+      }
+    });
+    window.addEventListener('mouseup', function(){ tracking=false; });
+  })();
+}
+function closeCompactDetailFullscreen(){
+  if(compactDetailNode){ compactDetailNode.detail = sanitizeRich(compactDetailEl.querySelector('#compactDetailBody').innerHTML); scheduleSave(); render(); }
+  if(compactDetailEl){ compactDetailEl.remove(); compactDetailEl = null; }
+  compactDetailNode = null;
+}
+
+/* ============================================================
    style popover (color + border)
    ============================================================ */
 function borderPreviewSvg(style){
@@ -3009,10 +3580,12 @@ function openStylePopover(x, y, n){
   var plus = document.createElement('button'); plus.className='mini-btn'; plus.textContent='＋';
   minus.addEventListener('click', function(){
     pushUndo(); n.borderLines = clamp((n.borderLines||1)-1, BORDER_LINES_MIN, BORDER_LINES_MAX);
+    propagateStatDown(n.id, 'borderLines', n.borderLines);
     scheduleSave(); render(); openStylePopover(x,y,n);
   });
   plus.addEventListener('click', function(){
     pushUndo(); n.borderLines = clamp((n.borderLines||1)+1, BORDER_LINES_MIN, BORDER_LINES_MAX);
+    propagateStatDown(n.id, 'borderLines', n.borderLines);
     scheduleSave(); render(); openStylePopover(x,y,n);
   });
   stepper.appendChild(minus); stepper.appendChild(countEl); stepper.appendChild(plus);
@@ -3037,6 +3610,7 @@ function closePopover(){
    insert dialog (single + batch)
    ============================================================ */
 var insertOverlay = document.getElementById('insertOverlay');
+var insertDialog = document.getElementById('insertDialog');
 var insertSummaryEl = document.getElementById('insertSummary');
 var insertDetailEl = document.getElementById('insertDetail');
 var insertHintTxt = document.getElementById('insertHintTxt');
@@ -3045,6 +3619,10 @@ var insertCatRow = document.getElementById('insertCatRow');
 var pendingInsert = null; // {kind, anchorId, dir, batch, editNode}
 var focusBeforeInsertDialog = null;
 var pendingInsertCategory = 'A'; // selected category for a NEW node being created in this dialog; ignored in edit mode (see insertCatRow click handler)
+var pendingInsertBorderLines = BORDER_LINES_DEFAULT; // importance for a NEW node; ignored in edit mode
+var pendingInsertMasterLevel = MASTER_LEVEL_DEFAULT; // proficiency for a NEW node; ignored in edit mode
+var insertBorderLinesValueEl = document.getElementById('insertBorderLinesValue');
+var insertMasterLevelValueEl = document.getElementById('insertMasterLevelValue');
 
 function refreshInsertCatUI(cat){
   Array.prototype.forEach.call(insertCatRow.querySelectorAll('.id-cat-btn'), function(b){
@@ -3067,6 +3645,47 @@ insertCatRow.addEventListener('mousedown', function(ev){
     refreshInsertCatUI(cat);
   }
 });
+/* importance (borderLines) and proficiency (masterLevel) steppers, shared
+   by both create mode (pendingInsertBorderLines/pendingInsertMasterLevel,
+   applied to the new node once it's actually created in
+   commitInsertDialog) and edit mode (writes straight to pendingInsert.node
+   and propagates immediately, same as every other in-place stat edit —
+   see propagateStatDown). */
+function refreshInsertStatUI(){
+  var bl = pendingInsert && pendingInsert.mode==='edit' ? (pendingInsert.node.borderLines||1) : pendingInsertBorderLines;
+  var ml = pendingInsert && pendingInsert.mode==='edit' ? (pendingInsert.node.masterLevel||MASTER_LEVEL_DEFAULT) : pendingInsertMasterLevel;
+  insertBorderLinesValueEl.textContent = bl;
+  insertMasterLevelValueEl.textContent = ml;
+}
+document.getElementById('insertBorderLinesStepper').addEventListener('click', function(ev){
+  var btn = ev.target.closest('button'); if(!btn || !pendingInsert) return;
+  var dir = parseInt(btn.dataset.dir, 10);
+  if(pendingInsert.mode==='edit'){
+    var n = pendingInsert.node;
+    pushUndo();
+    n.borderLines = clamp((n.borderLines||1)+dir, BORDER_LINES_MIN, BORDER_LINES_MAX);
+    propagateStatDown(n.id, 'borderLines', n.borderLines);
+    scheduleSave(); render();
+  } else {
+    pendingInsertBorderLines = clamp(pendingInsertBorderLines+dir, BORDER_LINES_MIN, BORDER_LINES_MAX);
+  }
+  refreshInsertStatUI();
+});
+document.getElementById('insertMasterLevelStepper').addEventListener('click', function(ev){
+  var btn = ev.target.closest('button'); if(!btn || !pendingInsert) return;
+  var dir = parseInt(btn.dataset.dir, 10);
+  if(pendingInsert.mode==='edit'){
+    var n = pendingInsert.node;
+    pushUndo();
+    n.masterLevel = clamp((n.masterLevel||MASTER_LEVEL_DEFAULT)+dir, MASTER_LEVEL_MIN, MASTER_LEVEL_MAX);
+    propagateStatDown(n.id, 'masterLevel', n.masterLevel);
+    scheduleSave(); render();
+  } else {
+    pendingInsertMasterLevel = clamp(pendingInsertMasterLevel+dir, MASTER_LEVEL_MIN, MASTER_LEVEL_MAX);
+  }
+  refreshInsertStatUI();
+});
+
 
 function openInsertDialog(cfg){
   pendingInsert = cfg;
@@ -3082,7 +3701,10 @@ function openInsertDialog(cfg){
     var parentIdForDefault = (cfg.mode==='child' || cfg.mode==='wrapChild') ? cfg.anchorId : (parentOf(cfg.anchorId)||{}).id;
     pendingInsertCategory = parentIdForDefault ? defaultCategoryForParent(parentIdForDefault) : 'A';
     refreshInsertCatUI(pendingInsertCategory);
+    pendingInsertBorderLines = BORDER_LINES_DEFAULT;
+    pendingInsertMasterLevel = MASTER_LEVEL_DEFAULT;
   }
+  refreshInsertStatUI();
   insertOverlay.classList.add('show');
   insertBatchBadge.classList.toggle('show', !!cfg.batch);
   setTimeout(function(){ insertSummaryEl.focus(); }, 0);
@@ -3137,7 +3759,12 @@ function commitInsertDialog(){
     // "A unless parent is B/C" default, and it still runs through
     // setNodeCategory so the hierarchy-constraint propagation applies.
     if(newId) setNodeCategory(newId, pendingInsertCategory);
-    if(newId){ selectedId = newId; triggerGlow(); }
+    if(newId){
+      var newNode = node(newId);
+      newNode.borderLines = pendingInsertBorderLines;
+      newNode.masterLevel = pendingInsertMasterLevel;
+      selectedId = newId; triggerGlow();
+    }
     scheduleSave();
   }
   render();
@@ -3151,6 +3778,30 @@ function commitInsertDialog(){
 document.getElementById('insertOkBtn').addEventListener('click', commitInsertDialog);
 document.getElementById('insertCancelBtn').addEventListener('click', closeInsertDialog);
 insertOverlay.addEventListener('mousedown', function(e){ if(e.target===insertOverlay) closeInsertDialog(); });
+/* 手机精致模式's full-screen editor closes via the same "下滑中间/左滑
+   内滑" dismiss gestures every other compact-mode sheet uses, auto-saving
+   (via commitInsertDialog, exactly what ⌘Enter already does) instead of
+   discarding — "编辑完成后按住屏幕中间下滑，或者左侧向内滑...自动保存
+   退出". Guarded to mobile-compact-mode only; desktop/手机原始模式 keep
+   using ⌘Enter/明确的取消或确定按钮, completely unaffected. */
+(function(){
+  var startX=0, startY=0, tracking=false, fromLeftEdge=false;
+  insertDialog.addEventListener('mousedown', function(ev){
+    if(!document.documentElement.classList.contains('mobile-compact-mode')) return;
+    if(ev.target.closest('#insertSummary') || ev.target.closest('#insertDetail')) return;
+    startX=ev.clientX; startY=ev.clientY; tracking=true;
+    fromLeftEdge = ev.clientX<24;
+  });
+  window.addEventListener('mousemove', function(ev){
+    if(!tracking) return;
+    var dx=ev.clientX-startX, dy=ev.clientY-startY;
+    if((fromLeftEdge && dx>70) || (!fromLeftEdge && dy>70 && Math.abs(dx)<60)){
+      tracking=false;
+      commitInsertDialog();
+    }
+  });
+  window.addEventListener('mouseup', function(){ tracking=false; });
+})();
 [insertSummaryEl, insertDetailEl].forEach(function(elx){
   elx.addEventListener('keydown', function(e){
     // while an IME composition is in progress (e.g. typing Chinese pinyin and
@@ -3651,6 +4302,38 @@ canvasWrap.addEventListener('mousedown', function(e){
   selectedId = null;
   render();
 });
+
+/* 双指捏合 -> go up one level, same as desktop's Shift+Up — "双指捏和将会
+   等价shift 上". A real two-finger gesture has no single-pointer mouse
+   equivalent (unlike every other 手机精致模式 gesture, which reuses
+   synthetic touch-compatibility mousedowns), so this is the ONE place in
+   the whole file that listens for actual touchstart/touchmove — gated
+   strictly to mobile-compact-mode so it can never fire in the other two
+   modes even on a touch-capable device. */
+canvasWrap.addEventListener('touchstart', function(e){
+  if(!document.documentElement.classList.contains('mobile-compact-mode')) return;
+  if(e.touches.length!==2) return;
+  var t0=e.touches[0], t1=e.touches[1];
+  pinchStartDist = Math.hypot(t1.clientX-t0.clientX, t1.clientY-t0.clientY);
+  pinchFired = false;
+}, {passive:true});
+var pinchStartDist = null, pinchFired = false;
+canvasWrap.addEventListener('touchmove', function(e){
+  if(!document.documentElement.classList.contains('mobile-compact-mode')) return;
+  if(e.touches.length!==2 || pinchStartDist==null || pinchFired) return;
+  var t0=e.touches[0], t1=e.touches[1];
+  var dist = Math.hypot(t1.clientX-t0.clientX, t1.clientY-t0.clientY);
+  if(dist < pinchStartDist*0.72){
+    pinchFired = true;
+    var pn = parentOf(state.focusId);
+    if(pn){
+      pushUndo();
+      state.focusId = pn.id;
+      collapseBeyondDepth(pn.id, appParams.maxAutoDepth);
+      scheduleSave(); render();
+    }
+  }
+}, {passive:true});
 
 canvasWrap.addEventListener('wheel', function(e){
   e.preventDefault();
@@ -4617,6 +5300,11 @@ function renderRailPinnedZone(){
     b.addEventListener('dragend', function(){ rbDragButtonId = null; });
     railPinnedZone.appendChild(b);
   });
+  // keep 手机精致模式's own first-class random-button strip in lockstep —
+  // every call site that needs the rail's pinned buttons refreshed also
+  // needs the compact bar's mirrored copy refreshed, so piggybacking here
+  // covers all of them without a separate call at each site.
+  if(typeof renderCompactRandomZone==='function') renderCompactRandomZone();
 }
 /* drag-to-pin: dropping a dragged button (from the panel list OR an
    already-pinned rail shortcut) onto the rail pins it there —
@@ -5240,24 +5928,46 @@ mobileDragKeyEl.addEventListener('click', function(){
   mobileDrag.armed = !mobileDrag.armed;
   mobileDragKeyEl.classList.toggle('armed', mobileDrag.armed);
 });
-var btnMobileMode = document.getElementById('btnMobileMode');
-var mobileToolbar = document.getElementById('mobileToolbar');
-function applyMobileMode(on){
-  document.documentElement.classList.toggle('mobile-mode', on);
-  btnMobileMode.classList.toggle('active', on);
-  // shorten .param-label text under mobile mode (its own data-mobile
-  // attribute holds the short form; the original full text is stashed
-  // back into data-mobile itself on the way out so toggling mobile mode
-  // off restores the exact desktop string byte-for-byte).
+var uiModeSwitch = document.getElementById('uiModeSwitch');
+/* three mutually-exclusive display modes, switched by a single button
+   group instead of the old lone on/off toggle — "把现在有的那个按钮改成
+   三选一". html.mobile-mode drives the ORIGINAL mobile toolbar/bottom-
+   sheet redesign (unchanged); html.mobile-compact-mode drives the NEW
+   "手机精致模式" simplified touch UI built on top of it. The two classes
+   are mutually exclusive by construction (this function always clears
+   both before applying the one the new mode actually needs), so nothing
+   about desktop's own (neither-class) styling can ever be affected by
+   either mobile mode's CSS. */
+function applyUiMode(mode){
+  document.documentElement.classList.toggle('mobile-mode', mode==='mobile-raw');
+  document.documentElement.classList.toggle('mobile-compact-mode', mode==='mobile-compact');
+  uiModeSwitch.querySelectorAll('.ui-mode-btn').forEach(function(b){
+    b.classList.toggle('active', b.dataset.mode===mode);
+  });
+  // shorten .param-label text under either mobile mode (its own
+  // data-mobile attribute holds the short form; the original full text is
+  // stashed back into data-mobile itself on the way out so switching back
+  // to desktop restores the exact desktop string byte-for-byte).
+  var compact = mode!=='desktop';
   document.querySelectorAll('#paramsFlyout .param-label[data-mobile]').forEach(function(el){
     var alt = el.dataset.mobile;
-    el.dataset.mobile = el.textContent;
-    el.textContent = alt;
+    var isShort = el.dataset.isShort==='1';
+    if(compact && !isShort){
+      el.dataset.mobile = el.textContent;
+      el.textContent = alt;
+      el.dataset.isShort = '1';
+    } else if(!compact && isShort){
+      el.dataset.mobile = el.textContent;
+      el.textContent = alt;
+      el.dataset.isShort = '0';
+    }
   });
 }
-btnMobileMode.addEventListener('click', function(){
-  appParams.mobileMode = !appParams.mobileMode;
-  applyMobileMode(appParams.mobileMode);
+uiModeSwitch.addEventListener('click', function(ev){
+  var btn = ev.target.closest('.ui-mode-btn');
+  if(!btn) return;
+  appParams.uiMode = btn.dataset.mode;
+  applyUiMode(appParams.uiMode);
   saveParams();
 });
 
@@ -5434,12 +6144,189 @@ function saveRailWidth(w){
 })();
 
 /* ============================================================
+   手机精致模式 (mobile-compact-mode): bottom control bar + "更多" sheet.
+   Deliberately THIN — every button here just forwards to the SAME
+   handler an equivalent desktop/rail control already uses (btnSearch's
+   click, btnParams' click, cbMoreExport -> btnExport.click(), etc.)
+   instead of re-implementing search/params/import/export/reset logic a
+   third time. Only the depth control and relax slider get their own
+   direct appParams wiring, mirroring (not calling) #railDepthCtl/
+   #relaxSlider's own handlers 1:1, since those two ARE simple enough
+   that a forwarded synthetic click would be more code than just
+   repeating the same few lines.
+   ============================================================ */
+var cbSearchEl = document.getElementById('cbSearch');
+var cbTreeEl = document.getElementById('cbTree');
+var cbNavModeEl = document.getElementById('cbNavMode');
+var cbMoreEl = document.getElementById('cbMore');
+var compactMoreSheetEl = document.getElementById('compactMoreSheet');
+var compactRandomZoneEl = document.getElementById('compactRandomZone');
+var compactDepthValueEl = document.getElementById('compactDepthValue');
+var compactDepthMinusEl = document.getElementById('compactDepthMinus');
+var compactDepthPlusEl = document.getElementById('compactDepthPlus');
+var compactRelaxSliderEl = document.getElementById('compactRelaxSlider');
+var navModeOn = false; // "导航模式" — OFF by default, see task's own spec
+
+cbSearchEl.addEventListener('click', function(){ btnSearch.click(); });
+cbTreeEl.addEventListener('click', function(){ openCompactTreeSheet(); });
+cbNavModeEl.addEventListener('click', function(){
+  navModeOn = !navModeOn;
+  cbNavModeEl.classList.toggle('active', navModeOn);
+});
+cbMoreEl.addEventListener('click', function(){
+  compactMoreSheetEl.classList.toggle('open');
+});
+document.getElementById('compactMoreClose').addEventListener('click', function(){
+  compactMoreSheetEl.classList.remove('open');
+});
+document.getElementById('cbMoreParams').addEventListener('click', function(){ compactMoreSheetEl.classList.remove('open'); btnParams.click(); });
+document.getElementById('cbMoreTheme').addEventListener('click', function(){ btnTheme.click(); });
+document.getElementById('cbMoreImport').addEventListener('click', function(){ document.getElementById('btnImport').click(); });
+document.getElementById('cbMoreExport').addEventListener('click', function(){ document.getElementById('btnExport').click(); });
+document.getElementById('cbMoreFit').addEventListener('click', function(){ document.getElementById('btnFit').click(); });
+document.getElementById('cbMoreResetVisible').addEventListener('click', function(){ document.getElementById('btnResetVisibleSizes').click(); });
+document.getElementById('cbMoreResetAll').addEventListener('click', function(){ document.getElementById('btnResetAllSizes').click(); });
+document.getElementById('cbMoreCenter').addEventListener('click', function(){ document.getElementById('btnCenterVisibleChildren').click(); });
+document.getElementById('cbMoreDesktop').addEventListener('click', function(){
+  compactMoreSheetEl.classList.remove('open');
+  appParams.uiMode = 'desktop'; applyUiMode('desktop'); saveParams();
+});
+document.getElementById('cbMoreRaw').addEventListener('click', function(){
+  compactMoreSheetEl.classList.remove('open');
+  appParams.uiMode = 'mobile-raw'; applyUiMode('mobile-raw'); saveParams();
+});
+
+/* ============================================================
+   手机精致模式's own tree view — a from-scratch renderer (not a reuse of
+   renderTreeView) since the row content, tap targets, and A/B-only filter
+   are all different enough from the desktop/手机原始 tree that forwarding
+   would need more override code than a fresh ~40-line walk. Importance/
+   masterLevel show on EVERY row via "A(imp,lvl)"/"B(imp,lvl)" — "A类节点
+   也要显示重要度和熟练度" — not just B as the desktop tree does, since
+   desktop's own B-only format predates this request.
+   ============================================================ */
+var compactTreeSheetEl = document.getElementById('compactTreeSheet');
+var compactTreeListEl = document.getElementById('compactTreeList');
+function openCompactTreeSheet(){
+  renderCompactTreeView();
+  compactTreeSheetEl.classList.add('open');
+}
+function closeCompactTreeSheet(){
+  compactTreeSheetEl.classList.remove('open');
+}
+document.getElementById('compactTreeBack').addEventListener('click', closeCompactTreeSheet);
+/* left-edge-inward swipe OR downward swipe anywhere on the sheet closes
+   it — "屏幕左侧内滑或者屏幕中间下滑关闭" — both common mobile
+   dismiss gestures. Tracked via plain mousedown/move/up (this file has no
+   touch-event listeners anywhere; mobile browsers already synthesize
+   these from real touches — see the mobile-toolbar modifier-bridge
+   comment elsewhere in this file for the same reasoning). */
+(function(){
+  var startX=0, startY=0, tracking=false, fromLeftEdge=false;
+  compactTreeSheetEl.addEventListener('mousedown', function(ev){
+    startX = ev.clientX; startY = ev.clientY; tracking = true;
+    fromLeftEdge = ev.clientX < 24;
+  });
+  window.addEventListener('mousemove', function(ev){
+    if(!tracking) return;
+    var dx = ev.clientX-startX, dy = ev.clientY-startY;
+    if((fromLeftEdge && dx>70) || (!fromLeftEdge && dy>70 && Math.abs(dx)<60)){
+      tracking = false;
+      closeCompactTreeSheet();
+    }
+  });
+  window.addEventListener('mouseup', function(){ tracking = false; });
+})();
+function renderCompactTreeView(){
+  compactTreeListEl.innerHTML = '';
+  (function walk(id, depth){
+    var n = node(id);
+    // C nodes (and anything under them) never render in this tree —
+    // "只显示AB类，不显示C类节点".
+    if(!n || n.category==='C') return;
+    var row = document.createElement('div');
+    row.className = 'ctv-row';
+    row.style.paddingLeft = (6+depth*18)+'px';
+    var abKids = n.children.map(node).filter(function(c){ return c && c.category!=='C'; });
+    var hasAbKids = abKids.length>0;
+    var isTreeRoot = (id===state.rootId);
+    if(hasAbKids && !n.drilled && !isTreeRoot) row.classList.add('ctv-collapsed');
+    var tag = document.createElement('span');
+    tag.className = 'ctv-tag';
+    tag.dataset.cat = n.category;
+    tag.textContent = n.category+'('+importanceOf(n)+','+n.masterLevel+')';
+    tag.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      makeTreeSelectionVisibleOnCanvas(id);
+      selectedId = id;
+      triggerGlow();
+      render();
+      closeCompactTreeSheet();
+    });
+    row.appendChild(tag);
+    var summary = document.createElement('span');
+    summary.className = 'ctv-summary';
+    summary.textContent = richToPlain(n.summary) || '(未命名)';
+    row.appendChild(summary);
+    row.addEventListener('click', function(){
+      // "点击节点中心将会展开和折叠孩子节点" — tapping the row BODY (not
+      // the tag) only ever toggles drilled; it never changes focus/root.
+      if(!hasAbKids || isTreeRoot) return;
+      pushUndo();
+      n.drilled = !n.drilled;
+      scheduleSave();
+      renderCompactTreeView();
+      render();
+    });
+    compactTreeListEl.appendChild(row);
+    if(hasAbKids && (n.drilled || isTreeRoot)){
+      abKids.forEach(function(c){ walk(c.id, depth+1); });
+    }
+  })(state.rootId, 0);
+}
+
+function refreshCompactDepthUI(){ compactDepthValueEl.textContent = appParams.maxAutoDepth; }
+compactDepthMinusEl.addEventListener('click', function(){
+  appParams.maxAutoDepth = clamp(appParams.maxAutoDepth-1, MAX_AUTO_DEPTH_MIN, MAX_AUTO_DEPTH_MAX);
+  refreshCompactDepthUI(); refreshRailDepthUI(); saveParams();
+  collapseBeyondDepth(state.focusId, appParams.maxAutoDepth);
+  scheduleSave(); render(); resyncRootView();
+});
+compactDepthPlusEl.addEventListener('click', function(){
+  appParams.maxAutoDepth = clamp(appParams.maxAutoDepth+1, MAX_AUTO_DEPTH_MIN, MAX_AUTO_DEPTH_MAX);
+  refreshCompactDepthUI(); refreshRailDepthUI(); saveParams();
+  setExpandedToDepth(state.focusId, appParams.maxAutoDepth);
+  scheduleSave(); render(); resyncRootView();
+});
+compactRelaxSliderEl.addEventListener('input', function(){
+  appParams.relaxStrength = clamp(compactRelaxSliderEl.value/100, RELAX_MIN, RELAX_MAX);
+  relaxSlider.value = compactRelaxSliderEl.value;
+  saveParams(); render();
+});
+/* random-pick buttons, mirrored into the compact bar's own first-class
+   zone — "每个随机选一都是一个独立的一等公民按钮". Re-rendered any time
+   the underlying button set could have changed, same trigger points
+   renderRailPinnedZone already uses. */
+function renderCompactRandomZone(){
+  compactRandomZoneEl.innerHTML = '';
+  (state.randomButtons||[]).forEach(function(btn){
+    var b = document.createElement('button');
+    b.className = 'compact-rb-btn';
+    b.textContent = btn.name||'?';
+    b.addEventListener('click', function(){ activateRandomButton(btn); });
+    compactRandomZoneEl.appendChild(b);
+  });
+}
+
+/* ============================================================
    init
    ============================================================ */
 loadRailWidth();
 loadParams();
 refreshRailDepthUI();
-applyMobileMode(appParams.mobileMode);
+refreshCompactDepthUI();
+compactRelaxSliderEl.value = Math.round(appParams.relaxStrength*100);
+applyUiMode(appParams.uiMode);
 applyTheme();
 // pinned random-pick rail shortcuts otherwise only ever get (re)rendered
 // from renderRandomPanel() (when the panel opens) or the drag-to-pin drop
