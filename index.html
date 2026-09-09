@@ -681,7 +681,7 @@
      own new elements or #canvasWrap's outer layout slot.
      Icon/font sizing throughout uses clamp()+vw so it "自动适配手机屏幕"
      across phone widths without a separate breakpoint per device. ============================================================ */
-  #compactBar, #compactMoreSheet, #compactTreeSheet, #compactSearchSheet{display:none;}
+  #compactBar, #compactMoreSheet, #compactTreeSheet, #compactSearchSheet, #compactRootLabel{display:none;}
   html.mobile-compact-mode #rail, html.mobile-compact-mode #mobileToolbar,
   html.mobile-compact-mode #treeFlyout, html.mobile-compact-mode #randomFlyout{
     display:none;
@@ -701,7 +701,44 @@
     transform:translateY(0);
   }
   html.mobile-compact-mode #app{flex-direction:column;}
-  html.mobile-compact-mode #canvasWrap{order:1;flex:1;}
+  html.mobile-compact-mode #canvasWrap{order:1;flex:1;position:relative;}
+  /* root treatment: "可见区域的跟节点边框是不显示的,屏幕底色就是跟节点
+     底色半透明,根节点文字部分显示在画面中心上方,左右对称". The class is
+     only ever added to the ROOT element (see buildContainerTree's own
+     compactRootMode check) so no non-root node's frame/chip is affected —
+     hiding .mm-frame here just removes the fill/border/shadow visual,
+     the element itself (and its child-layer descendants) stays exactly
+     where containerSize/layoutChildrenPositions already put it. */
+  html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame > .mm-frame,
+  html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame > .mm-miniature-inner > .mm-frame{
+    background:transparent!important;box-shadow:none!important;
+  }
+  html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame .mm-border-svg{display:none;}
+  /* the root's OWN centered label — a fixed overlay on #canvasWrap
+     itself (not a descendant of the scaled/panned #stage), so its font
+     size/position stay constant on screen regardless of camera.scale or
+     the children-group's own pan/zoom — "根节点文字部分显示在画面中心
+     上方,左右对称". updateCompactRootChrome (called from render()) is
+     the only thing that ever sets its text content. */
+  html.mobile-compact-mode #compactRootLabel{
+    display:flex;position:absolute;top:8%;left:0;right:0;justify-content:center;
+    text-align:center;padding:0 8%;font-size:clamp(15px,4vw,19px);font-weight:700;
+    color:var(--text-main);pointer-events:none;z-index:5;
+  }
+  /* one-shot "zoom in" entrance for the NEW root element right after a
+     pinch-to-go-up gesture — see render()'s own pendingPinchZoomAnim
+     comment for why a keyframe (applied fresh to each new element) is
+     needed instead of a plain CSS transition here. Starts slightly
+     larger + faded (as if the old, now-a-child view were still expanding
+     outward into the new root) and settles to its normal 1/opaque state,
+     matching the "zooming OUT to see the parent" motion a pinch implies. */
+  @keyframes compactPinchZoomIn{
+    from{ opacity:0; transform:scale(1.12); }
+    to{ opacity:1; transform:scale(1); }
+  }
+  .compact-pinch-zoom-in{
+    animation:compactPinchZoomIn .22s ease-out;
+  }
   /* "控制台在最低下" — the one-and-only always-visible control surface in
      this mode, pinned to the bottom, above everything else in #app. */
   html.mobile-compact-mode #compactBar{
@@ -1065,6 +1102,7 @@
 
   <div id="canvasWrap">
     <div id="stage"></div>
+    <div id="compactRootLabel"></div>
   </div>
 </div>
 
@@ -1155,6 +1193,7 @@ var RAIL_W_MIN = 48, RAIL_W_MAX = 160, RAIL_W_DEFAULT = 64;
 var MIN_SCALE = 0.02, MAX_SCALE = 4;
 var GLOW_MS = 30000;
 var FOCUS_FIT_MARGIN = 64; // px of breathing room around the focus root when it's auto-fit to the viewport (fitCameraToRoot/minScaleForFit)
+var COMPACT_GROUP_EDGE_GAP = 14; // "留一条窄缝隙" — px of breathing room left on the SHORT (fitted) axis of 手机精致模式's children-group scale-to-fit
 /* per-node visual scale, replacing the old single sizeLevel: every node now
    stores FOUR independent floats — scaleXNoKids/scaleYNoKids (used while
    the node is a leaf/collapsed) and scaleXKids/scaleYKids (used once it's
@@ -2556,6 +2595,7 @@ var glowingUntilClear = true;
    ============================================================ */
 var stage = document.getElementById('stage');
 var canvasWrap = document.getElementById('canvasWrap');
+var compactRootLabel = document.getElementById('compactRootLabel');
 var railEl = document.getElementById('rail');
 var camera = { x:0, y:0, scale:1 };
 
@@ -2570,6 +2610,15 @@ function shadeColor(hex, pct){
   b = Math.max(0,Math.min(255, Math.round(b + (f<0? b*f : (255-b)*f))));
   return '#'+[r,g,b].map(function(v){ return v.toString(16).padStart(2,'0'); }).join('');
 }
+function hexToRgba(hex, alpha){
+  var r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return 'rgba('+r+','+g+','+b+','+alpha+')';
+}
+/* true whenever 手机精致模式 is active — checked from many unrelated
+   spots (root rendering, gesture routing, camera math), so this one
+   helper documents the intent at each call site instead of repeating the
+   classList check inline. */
+function isCompactMode(){ return document.documentElement.classList.contains('mobile-compact-mode'); }
 
 /* ============================================================
    border rendering: every border style (including plain solid /
@@ -2766,6 +2815,15 @@ function render(){
   }
   rootEl.style.left = (-rootEl._boxW/2)+'px';
   rootEl.style.top = (-rootEl._boxH/2)+'px';
+  // 手机精致模式's pinch-to-go-up gesture sets this flag right before its
+  // own render() call — the whole #stage subtree gets torn down and
+  // rebuilt from scratch every render() (see stage.innerHTML='' above),
+  // so a plain CSS `transition` on the root element can't animate
+  // between the OLD root (a different node, already gone) and this NEW
+  // one; a one-shot keyframe animation applied to the freshly-built
+  // element instead is what makes the level-change feel like a smooth
+  // zoom rather than an instant swap — "双指捏合的动画能不能再顺滑一点".
+  if(pendingPinchZoomAnim){ rootEl.classList.add('compact-pinch-zoom-in'); pendingPinchZoomAnim = false; }
   stage.appendChild(rootEl);
   // the focus/root node's OWN logical size (rootEl._boxW/_boxH) is now
   // computed purely from its content and children (see containerSize),
@@ -2787,15 +2845,133 @@ function render(){
   // pan/zoom is always left alone until they deliberately switch focus.
   var focusChanged = lastFocusId !== state.focusId;
   lastRootBox = {w:rootEl._boxW, h:rootEl._boxH};
-  if(focusChanged) fitCameraToRoot();
+  if(isCompactMode()){
+    // 手机精致模式 bypasses the normal "fit the root's own natural box to
+    // the viewport" camera math entirely — the root is invisible (no
+    // frame/border/chip, see compact-root-hide-frame) and its own
+    // containerSize-driven box is just an abstract layout scratch space
+    // for computeCrowdScale/layoutChildrenPositions now, not something
+    // that needs to visually "fill the screen". Locking camera.scale to
+    // 1 and centering the stage's local origin (the root's own center) on
+    // the visible canvas center makes 1 local unit == 1 real CSS px,
+    // which is exactly what recomputeCompactChildrenView (called from
+    // inside buildContainerTree, using visibleCanvasRect()'s real px
+    // dimensions) already assumes — without this, its computed scale
+    // would get silently double-applied on top of whatever camera.scale
+    // fitCameraToRoot happened to pick.
+    camera.scale = 1;
+    var cvis = visibleCanvasRect(), cfull = canvasWrap.getBoundingClientRect();
+    camera.x = (cvis.left - cfull.left) + cvis.width/2;
+    camera.y = (cvis.top - cfull.top) + cvis.height/2;
+  } else {
+    if(focusChanged) fitCameraToRoot();
+    clampCamera();
+  }
   lastFocusId = state.focusId;
-  clampCamera();
   applyCamera();
+  if(isCompactMode()) updateCompactRootChrome(focus);
   renderNav();
+}
+/* the root's own tint/label — see buildContainerTree's compact-root-hide-
+   frame comment for why the root has no visible frame/chip of its own in
+   this mode. Applied to #canvasWrap (not #stage/the root element itself)
+   since it must fill the ENTIRE visible canvas regardless of the root's
+   own (now purely-abstract) box size — "屏幕底色就是跟节点底色半透明". */
+function updateCompactRootChrome(focus){
+  var preset = COLOR_PRESETS[focus.color % COLOR_PRESETS.length];
+  var borderHex = isDarkTheme() ? preset.borderD : preset.borderL;
+  canvasWrap.style.background = hexToRgba(borderHex, 0.16);
+  compactRootLabel.textContent = richToPlain(focus.summary) || '(未命名)';
 }
 
 var lastRootBox = null;
 var lastFocusId = null;
+/* 手机精致模式's own children-group viewport state — completely separate
+   from `camera` (which frames the WHOLE #stage/root box, unaffected by
+   this). offset{X,Y} is a pure DISPLAY-layer pan of the children-group
+   wrapper; it never touches any child's real px/py, and is reset (see
+   render()) whenever the focus root changes, since "居中"/"缩放" is only
+   ever computed fresh against whichever root is currently showing. */
+var compactChildrenView = {scale:1, offsetX:0, offsetY:0, axis:null, groupW:0, groupH:0};
+/* the smallest axis-aligned box enclosing every DIRECT, PLACED child of
+   parentId, in the parent's own local px/py coordinate space — the same
+   space layoutChildrenPositions already lays every child out in. Returns
+   null if there are fewer than 1 placed child (nothing to bound). Shared
+   by both the "中心化" button's own bbox math (see
+   btnCenterVisibleChildren) and 手机精致模式's group-scale/center — kept
+   as its own function here so a future caller doesn't have to re-derive
+   the same min/max walk a third time. */
+function childrenGroupBBox(parentId){
+  var kids = children(parentId).filter(function(k){ return k.placed; });
+  if(!kids.length) return null;
+  var minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+  kids.forEach(function(k){
+    var b = k.drilled ? containerSize(k) : computeNodeBox(k);
+    var left = k.px - b.w/2, right = k.px + b.w/2;
+    var top = k.py - b.h/2, bottom = k.py + b.h/2;
+    if(left<minX) minX = left;
+    if(right>maxX) maxX = right;
+    if(top<minY) minY = top;
+    if(bottom>maxY) maxY = bottom;
+  });
+  return {minX:minX, maxX:maxX, minY:minY, maxY:maxY, w:maxX-minX, h:maxY-minY, cx:(minX+maxX)/2, cy:(minY+maxY)/2};
+}
+/* recompute 手机精致模式's children-group scale/axis from the CURRENT
+   root's direct-children bbox — "把所有子节点组成的group占据面积的外接
+   矩形等比例放大,到达和手机屏幕相对较短的一个方向,刚好匹配的程度,然后
+   只允许在较长的那个方向上平移拖拽". Called on every render() while
+   compact mode is active (bbox can change from a drag/resize even when
+   the focus root itself hasn't), and its offsetX/offsetY are re-clamped
+   against the NEW scale/axis every time — "如果导航模式打开,节点被拖拽,
+   导致整体外接矩形宽高比例变化,需要及时适配到新比例". Only offsetX/Y
+   (a pure display-layer pan) are ever touched here; no child's real
+   px/py is read for anything except measuring the bbox. */
+function recomputeCompactChildrenView(parentId, viewportW, viewportH){
+  var bbox = childrenGroupBBox(parentId);
+  if(!bbox || bbox.w<=0 || bbox.h<=0){
+    compactChildrenView.scale = 1; compactChildrenView.offsetX = 0; compactChildrenView.offsetY = 0;
+    compactChildrenView.axis = null; compactChildrenView.groupW = 0; compactChildrenView.groupH = 0;
+    return;
+  }
+  var availW = Math.max(1, viewportW - COMPACT_GROUP_EDGE_GAP*2);
+  var availH = Math.max(1, viewportH - COMPACT_GROUP_EDGE_GAP*2);
+  var groupAspect = bbox.w/bbox.h, viewportAspect = availW/availH;
+  // "很宽很矮" (group wider-than-viewport-proportion) -> fit HEIGHT, allow
+  // horizontal drag. "很瘦很高" -> fit WIDTH, allow vertical drag. Exactly
+  // matching aspect ratios (viewportAspect===groupAspect) falls into the
+  // width-fit branch, which is equivalent (nothing to scroll either way).
+  var fitHeight = groupAspect > viewportAspect;
+  var scale = fitHeight ? (availH/bbox.h) : (availW/bbox.w);
+  compactChildrenView.scale = scale;
+  compactChildrenView.axis = fitHeight ? 'x' : 'y';
+  compactChildrenView.groupW = bbox.w*scale;
+  compactChildrenView.groupH = bbox.h*scale;
+  // clamp any EXISTING offset to the new scale/bbox immediately (rather
+  // than snapping back to 0) — this is what keeps a live navModeOn drag
+  // from visibly jumping the instant the bbox's aspect ratio crosses the
+  // fit-width/fit-height threshold.
+  clampCompactChildrenOffset(viewportW, viewportH);
+}
+/* how far compactChildrenView.offset{X,Y} is allowed to move along its
+   one permitted axis before the group's own edge would pull back INSIDE
+   the viewport — "只能横竖有一个方向可以移动...只在子节点group底端超出
+   屏幕时,才支持向下滚动到显示出来完整的子节点". The perpendicular axis
+   is always pinned to 0 (group already fits/fills it exactly, per
+   recomputeCompactChildrenView's own fit-scale choice), so there's
+   nothing to clamp there. */
+function clampCompactChildrenOffset(viewportW, viewportH){
+  if(compactChildrenView.axis==='x'){
+    var maxAbsX = Math.max(0, (compactChildrenView.groupW - viewportW)/2);
+    compactChildrenView.offsetX = clamp(compactChildrenView.offsetX, -maxAbsX, maxAbsX);
+    compactChildrenView.offsetY = 0;
+  } else if(compactChildrenView.axis==='y'){
+    var maxAbsY = Math.max(0, (compactChildrenView.groupH - viewportH)/2);
+    compactChildrenView.offsetY = clamp(compactChildrenView.offsetY, -maxAbsY, maxAbsY);
+    compactChildrenView.offsetX = 0;
+  } else {
+    compactChildrenView.offsetX = 0; compactChildrenView.offsetY = 0;
+  }
+}
 /* the region of #canvasWrap actually usable for drawing right now — an
    open rail flyout is an absolutely-positioned overlay OUTSIDE the flex
    layout (a sibling of #canvasWrap, not a child), so #canvasWrap's own
@@ -2957,6 +3133,16 @@ function buildContainerTree(n, isRoot){
   frame.className = 'mm-frame';
   applyFrameStyle(inner===el ? el : inner, frame, n, natW, natH, box.shape);
   inner.appendChild(frame);
+  // 手机精致模式's own root treatment: "可见区域的跟节点边框是不显示的,
+  // 屏幕底色就是跟节点底色半透明,根节点文字部分显示在画面中心上方,左右
+  // 对称". The root's frame/border/chip are all hidden outright (see the
+  // .compact-root-hide-frame CSS, scoped to isRoot+compact mode only —
+  // every other node's frame/chip is completely untouched), and
+  // #canvasWrap's own background is tinted to the root's own color preset
+  // instead, applied from render() (which already knows the CURRENT
+  // focus node without buildContainerTree needing to re-derive it).
+  var compactRootMode = isRoot && isCompactMode();
+  if(compactRootMode) el.classList.add('compact-root-hide-frame');
 
   if(showChildren){
     var chip = document.createElement('div');
@@ -2989,7 +3175,7 @@ function buildContainerTree(n, isRoot){
     }
     chip.addEventListener('mousedown', function(ev){ nodeMousedown(ev, null, n); });
     chip.addEventListener('contextmenu', function(ev){ ev.preventDefault(); ev.stopPropagation(); openStylePopover(ev.clientX, ev.clientY, n); });
-    inner.appendChild(chip);
+    if(!compactRootMode) inner.appendChild(chip); // compact root's own "文字居中显示" comes from #compactRootLabel instead (see render()) — the normal chip bubble would duplicate it
 
     var natBox = {w:natW, h:natH, shape:box.shape};
     var childAvail = availForContainer(natBox);
@@ -3003,6 +3189,27 @@ function buildContainerTree(n, isRoot){
 
     var layer = document.createElement('div');
     layer.className='mm-children-layer';
+    // compact root: the layer is scaled+panned as a single rigid unit per
+    // recomputeCompactChildrenView (called from render(), which already
+    // knows the viewport size) — a pure DISPLAY transform layered on TOP
+    // of each child's own already-computed left/top (set from its real
+    // px/py below); nothing here ever touches k.px/k.py themselves, so
+    // "不能影响实际子节点xy位置...仅仅在显示层做一个平移". The scale is
+    // centered on the group's own bbox center (bbox.cx/cy in the SAME
+    // parent-local space k.px/py already live in), translated by
+    // transform-origin so growing/shrinking the scale never drifts the
+    // group's center away from the viewport's own center.
+    if(compactRootMode){
+      var vis = visibleCanvasRect();
+      recomputeCompactChildrenView(n.id, vis.width, vis.height);
+      var gbbox = childrenGroupBBox(n.id);
+      if(gbbox){
+        layer.style.transformOrigin = (natW/2 + gbbox.cx)+'px '+(natH/2 + gbbox.cy)+'px';
+        layer.style.transform =
+          'translate('+compactChildrenView.offsetX+'px,'+compactChildrenView.offsetY+'px) '+
+          'scale('+compactChildrenView.scale+')';
+      }
+    }
     kids.forEach(function(k){
       var childEl = buildContainerTree(k, false);
       var cx = natW/2 + k.px - childEl._boxW/2;
@@ -3265,6 +3472,19 @@ function nodeMousedown(ev, el, n){
   // while this mode is active, and conversely nothing about that logic
   // changes for desktop/手机原始模式 (neither of which sets this class).
   if(document.documentElement.classList.contains('mobile-compact-mode')){
+    // the ROOT itself is a special case: its own frame is invisible (see
+    // compact-root-hide-frame) and a tap landing on it but NOT on any
+    // child node means "pan/scroll the children-group", exactly like a
+    // tap on the blank canvas outside the root's box — routing it through
+    // compactNodeMousedown's tap/drag/long-press vocabulary instead would
+    // let a single-finger drag across empty root space get misread as a
+    // (meaningless, since the root has no visible border/color to change)
+    // importance/size/color/border gesture, and would swallow the pan
+    // gesture canvasWrap's own mousedown listener is supposed to run.
+    if(n.id===state.focusId){
+      startCompactGroupPan(ev);
+      return;
+    }
     compactNodeMousedown(ev, el, n);
     return;
   }
@@ -3376,9 +3596,18 @@ function startNodeDrag(ev, el, n){
   var startX=ev.clientX, startY=ev.clientY;
   var startPx=n.px, startPy=n.py;
   var moved=false;
+  // a direct child of 手机精致模式's focus root sits inside the extra
+  // compactChildrenView.scale transform (see buildContainerTree's own
+  // compact-root children-layer wrapping) ON TOP OF camera.scale — a
+  // real screen-px pointer movement maps to fewer local units the more
+  // zoomed-in that group currently is, so dividing by camera.scale ALONE
+  // (as every other drag in this file correctly does, since nothing else
+  // has this extra layer) would desync the dragged node from the finger
+  // by exactly the group's own current scale factor.
+  var dragScale = camera.scale * ((isCompactMode() && n.parentId===state.focusId) ? compactChildrenView.scale : 1);
   function onMove(e){
-    var dx=(e.clientX-startX)/camera.scale, dy=(e.clientY-startY)/camera.scale;
-    if(!moved && Math.abs(dx)+Math.abs(dy)<4/camera.scale) return;
+    var dx=(e.clientX-startX)/dragScale, dy=(e.clientY-startY)/dragScale;
+    if(!moved && Math.abs(dx)+Math.abs(dy)<4/dragScale) return;
     if(!moved){ moved=true; pushUndo(); el.classList.add('dragging'); draggingNodeId=n.id; }
     n.px = startPx+dx; n.py = startPy+dy;
     render();
@@ -4363,11 +4592,46 @@ function minScaleForFit(){
 canvasWrap.addEventListener('mousedown', function(e){
   if(mobileDrag.node){ mobileDragMoveTo(e.clientX, e.clientY); return; }
   if(e.target.closest('.mm-node')) return;
+  if(isCompactMode()){ startCompactGroupPan(e); return; }
   if(e.shiftKey){ toggleCategoryEditMode(); return; }
   if(e.metaKey) return; // ⌘+click on blank canvas is a no-op (nothing under the cursor to act on)
   selectedId = null;
   render();
 });
+/* single-finger pan of the children-group, along whichever ONE axis
+   recomputeCompactChildrenView decided is scrollable — "单手滑动屏幕不能
+   无限制滚动,而是只在子节点group底端超出屏幕时,才支持向下滚动到显示出来
+   完整的子节点". A tap with no real movement still falls through to a
+   plain deselect, matching blank-canvas click's normal behavior, since
+   didPan only flips true once the pointer has actually moved. */
+function startCompactGroupPan(ev){
+  if(!compactChildrenView.axis){
+    // nothing to pan (group already fits both axes) — same as a normal
+    // blank-canvas click.
+    selectedId = null; render();
+    return;
+  }
+  var startX=ev.clientX, startY=ev.clientY;
+  var startOffX=compactChildrenView.offsetX, startOffY=compactChildrenView.offsetY;
+  var didPan = false;
+  function onMove(e){
+    var dx=e.clientX-startX, dy=e.clientY-startY;
+    if(!didPan && Math.abs(dx)+Math.abs(dy)<4) return;
+    didPan = true;
+    var vis = visibleCanvasRect();
+    if(compactChildrenView.axis==='x') compactChildrenView.offsetX = startOffX+dx;
+    else compactChildrenView.offsetY = startOffY+dy;
+    clampCompactChildrenOffset(vis.width, vis.height);
+    render();
+  }
+  function onUp(){
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    if(!didPan){ selectedId = null; render(); }
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
 
 /* 双指捏合 -> go up one level, same as desktop's Shift+Up — "双指捏和将会
    等价shift 上". A real two-finger gesture has no single-pointer mouse
@@ -4384,6 +4648,7 @@ canvasWrap.addEventListener('touchstart', function(e){
   pinchFired = false;
 }, {passive:true});
 var pinchStartDist = null, pinchFired = false;
+var pendingPinchZoomAnim = false; // consumed once by render()'s own rootEl-append step — see its comment
 canvasWrap.addEventListener('touchmove', function(e){
   if(!document.documentElement.classList.contains('mobile-compact-mode')) return;
   if(e.touches.length!==2 || pinchStartDist==null || pinchFired) return;
@@ -4396,6 +4661,7 @@ canvasWrap.addEventListener('touchmove', function(e){
       pushUndo();
       state.focusId = pn.id;
       collapseBeyondDepth(pn.id, appParams.maxAutoDepth);
+      pendingPinchZoomAnim = true;
       scheduleSave(); render();
     }
   }
@@ -6007,6 +6273,13 @@ var uiModeSwitch = document.getElementById('uiModeSwitch');
 function applyUiMode(mode){
   document.documentElement.classList.toggle('mobile-mode', mode==='mobile-raw');
   document.documentElement.classList.toggle('mobile-compact-mode', mode==='mobile-compact');
+  // leaving compact mode must undo updateCompactRootChrome's own inline
+  // #canvasWrap.style.background tint — otherwise switching back to
+  // desktop/手机原始模式 would leave the canvas visibly tinted from
+  // whatever node was last the compact-mode focus root, with no render()
+  // path left that would ever clear it (desktop/手机原始模式 never call
+  // updateCompactRootChrome, so nothing else resets this style property).
+  if(mode!=='mobile-compact') canvasWrap.style.background = '';
   uiModeSwitch.querySelectorAll('.ui-mode-btn').forEach(function(b){
     b.classList.toggle('active', b.dataset.mode===mode);
   });
@@ -6035,6 +6308,7 @@ uiModeSwitch.addEventListener('click', function(ev){
   appParams.uiMode = btn.dataset.mode;
   applyUiMode(appParams.uiMode);
   saveParams();
+  render(); // switching in/out of 手机精致模式 changes the root's own rendering (frame/chip visibility, camera math) — apply immediately rather than waiting for the next unrelated render
 });
 
 var themeBtn = document.getElementById('btnTheme');
