@@ -87,7 +87,18 @@
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif;
-    background:var(--bg);color:var(--text-main);}
+    background:var(--bg);color:var(--text-main);
+    /* long-press anywhere (a node, a panel, whatever) must never trigger
+       the browser's native text-selection — that's exactly what was
+       silently swallowing 手机精致模式's long-press gesture ("长按节点会
+       触发选择文字事件...请禁用，否则几乎长按的功能全都激活不了"). Nothing
+       on this canvas is ever meant to be selected/copied as text, so this
+       is safe app-wide, not just under a mobile-mode class. contenteditable
+       fields (Summary/Detail/detail-fullscreen body) explicitly opt back
+       into normal text selection below — typing/selecting inside THOSE
+       must keep working exactly as before. */
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  [contenteditable="true"], input, textarea{-webkit-user-select:text;user-select:text;}
   #app{position:absolute;inset:0;display:flex;}
 
   /* ---------- side rail ---------- */
@@ -416,6 +427,19 @@
   }
   .mm-expand-star:hover{filter:brightness(1.12);}
 
+  /* 手机精致模式's fold/unfold badge — sized via inline style in JS
+     (buildCompactFoldBadge) relative to each node's OWN current font size
+     ("几乎和文字一半大"), since that varies per node/zoom level and can't
+     be expressed as a single fixed CSS size the way desktop's .mm-expand-
+     star is. This rule only sets the shape/position/color, not the size. */
+  .mm-compact-fold-badge{
+    position:absolute;top:-8px;right:-8px;border-radius:50%;
+    background:var(--node-border,var(--accent));color:#fff;font-weight:700;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;
+    box-shadow:0 2px 5px rgba(0,0,0,.22);user-select:none;
+  }
+  .mm-compact-fold-badge:active{filter:brightness(1.12);}
+
   /* top-left category badge, symmetric with the top-right expand star —
      only rendered while category-edit mode is active (see toggleCategoryEditMode) */
   .mm-cat-badge{
@@ -549,13 +573,16 @@
     color:var(--text-main);cursor:pointer;font-size:13px;font-weight:700;
   }
   .id-cat-btn.sel{background:var(--accent);color:#fff;border-color:var(--accent);}
-  /* row holding the ABC category picker plus the two new importance/
-     proficiency steppers, all vertically centered and evenly spaced so
-     nothing looks lopsided next to the 3-button ABC group — "保证横竖左右
-     都对齐整洁美观". Importance (border-line count) and proficiency
-     (masterLevel) share the exact same +/- stepper look, just a different
-     label, to keep the row visually uniform. */
-  .id-cat-stat-row{display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap;}
+  /* ABC picker + the two importance/proficiency steppers are all wrapped
+     in an IDENTICAL .id-stat-col (label-on-top, control-below) so all
+     three columns' controls sit on the same baseline — "三个文字没有水平
+     对齐,重要度和熟练度明显更低". The ABC column's own label is a
+     non-breaking space instead of real text (kept invisible, but still
+     occupies a real text line at the same font-size/line-height as
+     "重要度"/"熟练度") purely so its control row starts from the exact
+     same y-offset as the other two, without needing a separate label
+     line for "分类" that would duplicate the id-label above this row. */
+  .id-cat-stat-row{display:flex;align-items:flex-start;gap:14px;margin-bottom:12px;flex-wrap:wrap;}
   .id-stat-col{display:flex;flex-direction:column;align-items:center;gap:4px;}
   .id-stat-label{font-size:10.5px;color:var(--text-dim);font-weight:600;white-space:nowrap;}
   .id-stat-stepper{display:flex;align-items:center;gap:6px;}
@@ -695,7 +722,10 @@
   /* random-pick buttons render into here (see renderCompactRandomZone) —
      each one is its OWN first-class button, same footprint as any other
      compact-btn, laid out in a horizontally-scrollable strip so an
-     arbitrary number of custom buttons never breaks the one-row layout. */
+     arbitrary number of custom buttons never breaks the one-row layout.
+     Kept on row1 alone (not sharing a row with depth/nav-mode) so its own
+     horizontal scroll never fights for space with those fixed-width
+     controls — "底部控制按钮分成两排...避免放不下还要水平拖动". */
   #compactRandomZone{
     display:flex;align-items:center;gap:clamp(3px,1vw,6px);flex:1;min-width:0;
     overflow-x:auto;
@@ -722,7 +752,29 @@
   }
   #compactDepthCtl > div + div{border-left:1px solid var(--panel-border);}
   #compactDepthCtl > div.pressed{background:rgba(120,130,160,.18);}
-  #compactBarRow2{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
+  /* row2: depth control + 导航模式 switch, side by side — separated onto
+     its own row (not sharing row1's flex-1 random-button strip) so it
+     never gets squeezed by however many custom random buttons exist. */
+  #compactBarRow2{display:flex;align-items:center;justify-content:space-between;gap:clamp(6px,2vw,10px);}
+  /* 导航模式 toggle: an actual iOS-style switch (绿色开启/灰色关闭), not an
+     icon button — "导航模式要显示成一个switch...绿色开启灰色关闭，而不是
+     一个五角星". #cbNavMode itself is just a label+switch row, not a
+     button — click handling (see the JS wiring) covers the whole row so
+     tapping the label also toggles it, not just the pill itself. */
+  #cbNavMode{display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;}
+  #cbNavModeLabel{font-size:clamp(11px,2.6vw,13px);color:var(--text-main);white-space:nowrap;}
+  .compact-switch{
+    width:clamp(38px,10vw,46px);height:clamp(22px,5.8vw,26px);border-radius:999px;
+    background:#8e8e93;position:relative;transition:background .15s ease;flex-shrink:0;
+  }
+  #cbNavMode.active .compact-switch{background:#34c759;}
+  .compact-switch-knob{
+    position:absolute;top:2px;left:2px;width:calc(100% - 4px);height:calc(100% - 4px);
+    aspect-ratio:1;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);
+    transition:transform .15s ease;
+  }
+  #cbNavMode.active .compact-switch-knob{transform:translateX(calc(clamp(38px,10vw,46px) - clamp(22px,5.8vw,26px)));}
+  #compactBarRow3{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactRelaxLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
   #compactRelaxSlider{width:100%;accent-color:var(--accent);}
 
@@ -816,23 +868,6 @@
   .compact-action-btn:active{background:rgba(120,130,160,.14);}
   .compact-action-cancel{color:var(--text-dim);margin-top:4px;border-top:1px solid var(--panel-border);border-radius:0;}
 
-  /* detail-fullscreen editor — "双击节点，可以让detail展开到全屏". Plain
-     full-bleed page, no floating-dialog chrome per "不要像电脑那样悬浮
-     弹窗，而是直接手机全屏" — margins are pushed down to almost nothing so
-     "把尽可能多的内容留给文字". */
-  #compactDetailFullscreen{
-    position:fixed;inset:0;z-index:1300;background:var(--bg);
-    display:flex;flex-direction:column;padding:clamp(10px,3vw,16px);
-  }
-  #compactDetailHead{
-    font-size:clamp(14px,3.6vw,17px);font-weight:700;color:var(--text-main);
-    margin-bottom:clamp(8px,2.4vw,12px);flex-shrink:0;
-  }
-  #compactDetailBody{
-    flex:1;overflow-y:auto;font-size:clamp(13px,3.4vw,15px);color:var(--text-main);
-    line-height:1.5;outline:none;white-space:pre-wrap;
-  }
-
   /* "折叠起来孩子的，节点周围有一圈额外边框" — a thin extra ring drawn on
      any canvas node that has A/B children currently collapsed, ONLY in
      手机精致模式 (desktop/手机原始模式 already have their own "*"
@@ -903,19 +938,22 @@
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
       </button>
       <div id="compactRandomZone"></div>
-      <button class="compact-btn" id="cbNavMode" title="导航模式：开启后触摸手势用于拖拽/变色/变形/退回上一级，而非可见性/大小/重要度">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 15 8 21 9 16.5 13.2 17.6 19.5 12 16.4 6.4 19.5 7.5 13.2 3 9 9 8 12 2Z"/></svg>
-      </button>
-      <div id="compactDepthCtl" title="默认最大可视深度">
-        <div id="compactDepthMinus">‹</div>
-        <div id="compactDepthValue">2</div>
-        <div id="compactDepthPlus">›</div>
-      </div>
       <button class="compact-btn" id="cbMore" title="更多">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
       </button>
     </div>
     <div id="compactBarRow2">
+      <div id="compactDepthCtl" title="默认最大可视深度">
+        <div id="compactDepthMinus">‹</div>
+        <div id="compactDepthValue">2</div>
+        <div id="compactDepthPlus">›</div>
+      </div>
+      <div id="cbNavMode" title="导航模式：开启后触摸手势用于拖拽/变色/变形/退回上一级，而非可见性/大小/重要度">
+        <span id="cbNavModeLabel">导航模式</span>
+        <div class="compact-switch"><div class="compact-switch-knob"></div></div>
+      </div>
+    </div>
+    <div id="compactBarRow3">
       <span id="compactRelaxLabel">防碰撞强度</span>
       <input type="range" id="compactRelaxSlider" min="0" max="100" step="1">
     </div>
@@ -1037,12 +1075,15 @@
     <div id="insertSummary" contenteditable="true" data-ph="节点摘要…"></div>
     <div class="id-label">Detail</div>
     <div id="insertDetail" contenteditable="true" data-ph="节点详情…"></div>
-    <div class="id-label">分类 / 重要度 / 熟练度</div>
+    <div class="id-label">分类</div>
     <div class="id-cat-stat-row">
-      <div class="id-cat-row" id="insertCatRow">
-        <button class="id-cat-btn" data-cat="A">A</button>
-        <button class="id-cat-btn" data-cat="B">B</button>
-        <button class="id-cat-btn" data-cat="C">C</button>
+      <div class="id-stat-col">
+        <span class="id-stat-label">&nbsp;</span>
+        <div class="id-cat-row" id="insertCatRow">
+          <button class="id-cat-btn" data-cat="A">A</button>
+          <button class="id-cat-btn" data-cat="B">B</button>
+          <button class="id-cat-btn" data-cat="C">C</button>
+        </div>
       </div>
       <div class="id-stat-col">
         <span class="id-stat-label">重要度</span>
@@ -2973,7 +3014,22 @@ function buildContainerTree(n, isRoot){
     inner.appendChild(layer);
   } else {
     frame.appendChild(buildNodeContent(n, box));
-    if(kids.length) inner.appendChild(buildExpandStar(n));
+    // 手机精致模式 uses its own persistent fold badge instead (see below) —
+    // showing BOTH here would double up the top-right corner.
+    if(kids.length && !document.documentElement.classList.contains('mobile-compact-mode')){
+      inner.appendChild(buildExpandStar(n));
+    }
+  }
+  // 手机精致模式's own persistent fold/unfold badge — desktop's "*" only
+  // ever appears while COLLAPSED (buildExpandStar, above); compact mode
+  // needs a toggle visible in BOTH states, since tapping a branch's body
+  // is already claimed by the visibility-cycle gesture — "右上角永远有
+  // 一个符号要么是一个正三角形，要么是一个*号...折叠以后显示为*，再次
+  // 触摸点击的时候将孩子展开变回正三角形". Sized relative to this node's
+  // OWN current font size ("几乎和文字一半大"), not desktop's fixed 22px.
+  if(document.documentElement.classList.contains('mobile-compact-mode') && !isRoot){
+    var abKidsForFold = kids.filter(function(k){ return k.category!=='C'; });
+    if(abKidsForFold.length) inner.appendChild(buildCompactFoldBadge(n));
   }
 
   attachNodeEvents(el, n);
@@ -3080,6 +3136,49 @@ function buildExpandStar(n){
     resyncRootView();
   });
   return star;
+}
+/* 手机精致模式's fold/unfold badge: ▲ while drilled (tap collapses, same
+   effect as collapseNode's double-click on desktop), ＊ while collapsed
+   (tap expands, same effect as buildExpandStar above) — both states
+   render the SAME badge element/position, just different glyph+handler,
+   so there is always exactly one visible affordance regardless of
+   current state — "右上角永远有一个符号". */
+function buildCompactFoldBadge(n){
+  var badge = document.createElement('div');
+  badge.className = 'mm-compact-fold-badge';
+  // "几乎和文字一半大" — sized off this node's OWN current rendered font
+  // size (fontSizeFor already folds in globalFontScale/camera zoom/crowd-
+  // shrink), not a fixed px value, so the badge stays proportionate at
+  // every zoom level and node size instead of looking tiny on a large
+  // node or oversized on a small one.
+  var d = Math.max(16, fontSizeFor(n)*1.7);
+  badge.style.width = d+'px';
+  badge.style.height = d+'px';
+  badge.style.fontSize = (d*0.52)+'px';
+  if(n.drilled){
+    badge.textContent = '▲';
+    badge.title = '收起子节点';
+    badge.addEventListener('mousedown', function(ev){
+      ev.stopPropagation();
+      pushUndo();
+      n.drilled = false;
+      scheduleSave();
+      render();
+      resyncRootView();
+    });
+  } else {
+    badge.textContent = '＊';
+    badge.title = '展开子节点';
+    badge.addEventListener('mousedown', function(ev){
+      ev.stopPropagation();
+      pushUndo();
+      n.drilled = true;
+      scheduleSave();
+      render();
+      resyncRootView();
+    });
+  }
+  return badge;
 }
 /* double-click collapses direct children; a no-op if already collapsed. */
 function collapseNode(n){
@@ -3304,7 +3403,7 @@ function startNodeDrag(ev, el, n){
 
    导航模式关闭 (navModeOn=false, the default):
      - tap a leaf (or a collapsed branch)  -> cycle visibility (hidden/summary/detail)
-     - double-tap a leaf                   -> open detail fullscreen (compactDetailFullscreen)
+     - double-tap a leaf                   -> open the full edit dialog (openInsertDialog, mode:'edit' — same fullscreen-styled panel as long-press's "编辑内容")
      - tap a branch (children shown)       -> batch-cycle visibility of whole subtree
      - horizontal drag                     -> adjust importance (borderLines, ±1 per ~40px)
      - vertical drag                       -> adjust size (scale ×1.1 per ~40px, same crowd-avoid math as desktop ⌘+/-)
@@ -3417,18 +3516,34 @@ function compactNodeTap(n, ev){
     return;
   }
   if(isDoubleClick('compact:'+n.id, ev)){
-    // 双击叶子节点：detail全屏
-    openCompactDetailFullscreen(n);
+    // 双击叶子节点：打开完整编辑框（summary/detail/分类/重要度/熟练度/
+    // 确认/取消），与电脑版option+单击弹出的面板同一个，只是该面板本身
+    // 在手机精致模式下已经是全屏排版（见#insertDialog的
+    // html.mobile-compact-mode override）——不再是一个只有detail、没有任何
+    // 提示的空白编辑器。
+    openInsertDialog({mode:'edit', node:n});
     return;
   }
   pushUndo();
   if(compactIsBranch(n)){
     var subtree = subtreeIds(n.id).map(node).filter(function(x){ return x && x.category!=='C'; });
-    cycleVisBatch(subtree);
+    var maxVis = subtree.some(hasDetail) ? 2 : 1;
+    // reference for "what's the next step": prefer a NON-drilled subtree
+    // member — using the drilled anchor's OWN vis (what cycleVisBatch's
+    // own nodes[0] convention would do) breaks the cycle, because the
+    // floor-correction below immediately clamps the anchor back up to 1
+    // every time it would have landed on 0, so on the NEXT tap the anchor's
+    // stored vis can only ever read back as 1 or 2 — the computed "next"
+    // step then only ever alternates between 0 and 2, permanently skipping
+    // 1 (summary-only) — "触摸母节点...应该是三次循环...缺少仅展示summary
+    // 的那一次". A leaf's vis is never floor-corrected, so reading the
+    // cycle position off one instead keeps the full 0->1->2 rotation intact.
+    var ref = subtree.filter(function(x){ return !x.drilled; })[0] || n;
+    var next = (ref.vis>=maxVis) ? 0 : ref.vis+1;
+    subtree.forEach(function(x){ x.vis = next; });
     // "所有已经展开孩子的节点，永远保持至少summary可见" — a drilled node
-    // in the batch must never land on vis=0 even though cycleVisBatch's
-    // own 0/1/2 rotation would otherwise take it there in lockstep with
-    // its (possibly-leaf) siblings.
+    // in the batch must never land on vis=0 even though the rotation above
+    // would otherwise take it there in lockstep with its siblings.
     subtree.forEach(function(x){ if(x.drilled && x.vis===0) x.vis = 1; });
   } else {
     cycleVis(n);
@@ -3473,55 +3588,6 @@ function openCompactActionSheet(n){
   setTimeout(function(){ document.addEventListener('mousedown', closeActionSheetOnce, {capture:true}); }, 0);
 }
 function closeActionSheetOnce(e){ if(!e.target.closest('#compactActionSheet')) closeCompactActionSheet(); }
-
-/* double-tap-to-fullscreen for a leaf node's detail text — "双击节点，可以
-   让detail展开到全屏，并且可以自动保存". Closed via a downward swipe or a
-   left-edge-inward swipe (same dismiss gestures as compactTreeSheet),
-   auto-saving on every keystroke (scheduleSave already debounces) so
-   there is no separate explicit save step to forget. */
-var compactDetailEl = null, compactDetailNode = null;
-function openCompactDetailFullscreen(n){
-  closeCompactDetailFullscreen();
-  compactDetailNode = n;
-  var wrap = document.createElement('div');
-  wrap.id = 'compactDetailFullscreen';
-  var head = document.createElement('div');
-  head.id = 'compactDetailHead';
-  head.textContent = richToPlain(n.summary) || '(未命名)';
-  var body = document.createElement('div');
-  body.id = 'compactDetailBody';
-  body.contentEditable = 'true';
-  body.innerHTML = n.detail||'';
-  body.addEventListener('input', function(){
-    n.detail = sanitizeRich(body.innerHTML);
-    scheduleSave();
-  });
-  wrap.appendChild(head); wrap.appendChild(body);
-  document.body.appendChild(wrap);
-  compactDetailEl = wrap;
-  (function(){
-    var startX=0, startY=0, tracking=false, fromLeftEdge=false;
-    wrap.addEventListener('mousedown', function(ev){
-      if(ev.target===body) return; // don't hijack normal text-editing taps/drags inside the editable body
-      startX=ev.clientX; startY=ev.clientY; tracking=true;
-      fromLeftEdge = ev.clientX<24;
-    });
-    window.addEventListener('mousemove', function(ev){
-      if(!tracking) return;
-      var dx=ev.clientX-startX, dy=ev.clientY-startY;
-      if((fromLeftEdge && dx>70) || (!fromLeftEdge && dy>70 && Math.abs(dx)<60)){
-        tracking=false;
-        closeCompactDetailFullscreen();
-      }
-    });
-    window.addEventListener('mouseup', function(){ tracking=false; });
-  })();
-}
-function closeCompactDetailFullscreen(){
-  if(compactDetailNode){ compactDetailNode.detail = sanitizeRich(compactDetailEl.querySelector('#compactDetailBody').innerHTML); scheduleSave(); render(); }
-  if(compactDetailEl){ compactDetailEl.remove(); compactDetailEl = null; }
-  compactDetailNode = null;
-}
 
 /* ============================================================
    style popover (color + border)
