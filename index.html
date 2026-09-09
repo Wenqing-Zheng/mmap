@@ -369,6 +369,15 @@
   .mm-node{
     position:absolute;display:flex;flex-direction:column;align-items:center;
     transition:box-shadow .18s ease;
+    /* without this, a touch-hold on a node lets the browser's own
+       long-press-to-select/scroll heuristics race with (and typically
+       WIN against) this app's own long-press timers and drag tracking —
+       "手机上长按,按住左滑右滑,长按拖拽,没有被触发". none disables every
+       browser-native touch gesture on nodes, leaving 100% of touch
+       handling to this file's own listeners (see the touchstart/move/end
+       bridge near attachNodeEvents/canvasWrap for how those substitute
+       for the native pan/zoom this removes). */
+    touch-action:none;
   }
   .mm-node.dragging{transition:none;z-index:80;}
   /* real-boundary debug outline: shown on EVERY sibling in a container while
@@ -701,7 +710,7 @@
     transform:translateY(0);
   }
   html.mobile-compact-mode #app{flex-direction:column;}
-  html.mobile-compact-mode #canvasWrap{order:1;flex:1;position:relative;}
+  html.mobile-compact-mode #canvasWrap{order:1;flex:1;position:relative;touch-action:none;}
   /* root treatment: "可见区域的跟节点边框是不显示的,屏幕底色就是跟节点
      底色半透明,根节点文字部分显示在画面中心上方,左右对称". The class is
      only ever added to the ROOT element (see buildContainerTree's own
@@ -4666,6 +4675,79 @@ canvasWrap.addEventListener('touchmove', function(e){
     }
   }
 }, {passive:true});
+
+/* touch->mouse event bridge for 手机精致模式's canvas gestures.
+   Real mobile browsers DO synthesize mousedown/mouseup/click from a tap,
+   but only AFTER touchend fires — there is no synthetic mousedown while
+   a finger is still resting on the screen, and no synthetic mousemove
+   while it drags. Every 手机精致模式 gesture that depends on "is the
+   finger STILL down" (a long-press setTimeout in compactNodeMousedown)
+   or "track continuous movement while held" (startNodeDrag/
+   startCompactGroupPan's own window mousemove listeners) therefore never
+   actually fires from a real touch — only a quick tap (whose whole
+   mousedown->mouseup->click sequence arrives together, after release)
+   ever worked, matching exactly what was reported: "长按,按住左滑右滑,
+   长按拖拽,没有被触发...手机上没反应". This dispatches REAL
+   MouseEvent(mousedown/mousemove/mouseup) objects, live, from single-
+   finger touchstart/touchmove/touchend on canvas nodes — everything
+   downstream (compactNodeMousedown, startNodeDrag, startCompactGroupPan)
+   is already written against ev.clientX/clientY and plain addEventListener
+   callbacks, so it needs no changes at all to consume these.
+   Two-finger touches are left alone (return early) so they keep reaching
+   the pinch handler above untouched; e.preventDefault() on touchstart
+   additionally suppresses the delayed native tap (which would otherwise
+   ALSO fire a second, real mousedown at touchend and double-trigger
+   whatever this bridge's own synthetic mousedown already started). */
+(function(){
+  function synthMouse(type, touch){
+    return new MouseEvent(type, {
+      bubbles:true, cancelable:true, view:window,
+      clientX:touch.clientX, clientY:touch.clientY,
+      screenX:touch.screenX, screenY:touch.screenY
+    });
+  }
+  var activeTarget = null;
+  canvasWrap.addEventListener('touchstart', function(e){
+    if(!isCompactMode()) return;
+    if(e.touches.length!==1){
+      // a second finger just landed mid-gesture (transitioning into the
+      // pinch handled above) — cleanly end whatever single-finger drag
+      // was in progress instead of leaving its window-level mousemove
+      // listener attached with no matching mouseup ever coming.
+      if(activeTarget){ window.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, cancelable:true, view:window})); activeTarget = null; }
+      return;
+    }
+    var t = e.touches[0];
+    var el = document.elementFromPoint(t.clientX, t.clientY);
+    if(!el) return;
+    e.preventDefault();
+    activeTarget = el;
+    el.dispatchEvent(synthMouse('mousedown', t));
+  }, {passive:false});
+  canvasWrap.addEventListener('touchmove', function(e){
+    if(!isCompactMode() || !activeTarget) return;
+    if(e.touches.length!==1) return;
+    e.preventDefault();
+    // mousemove is dispatched on `window` (not activeTarget) below because
+    // every listener consuming these (startNodeDrag/startCompactGroupPan/
+    // compactNodeMousedown's own onMove) was attached via
+    // window.addEventListener('mousemove', ...) in the first place — same
+    // as how a real drag-outside-the-original-element already behaves for
+    // mouse users.
+    window.dispatchEvent(synthMouse('mousemove', e.touches[0]));
+  }, {passive:false});
+  canvasWrap.addEventListener('touchend', function(e){
+    if(!isCompactMode() || !activeTarget) return;
+    var t = e.changedTouches[0];
+    window.dispatchEvent(synthMouse('mouseup', t));
+    activeTarget = null;
+  }, {passive:true});
+  canvasWrap.addEventListener('touchcancel', function(){
+    if(!activeTarget) return;
+    window.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, cancelable:true, view:window}));
+    activeTarget = null;
+  }, {passive:true});
+})();
 
 canvasWrap.addEventListener('wheel', function(e){
   e.preventDefault();
