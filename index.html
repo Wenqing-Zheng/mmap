@@ -802,28 +802,13 @@
   }
   #compactDepthCtl > div + div{border-left:1px solid var(--panel-border);}
   #compactDepthCtl > div.pressed{background:rgba(120,130,160,.18);}
-  /* row2: depth control + 导航模式 switch, side by side — separated onto
-     its own row (not sharing row1's flex-1 random-button strip) so it
-     never gets squeezed by however many custom random buttons exist. */
-  #compactBarRow2{display:flex;align-items:center;justify-content:space-between;gap:clamp(6px,2vw,10px);}
-  /* 导航模式 toggle: an actual iOS-style switch (绿色开启/灰色关闭), not an
-     icon button — "导航模式要显示成一个switch...绿色开启灰色关闭，而不是
-     一个五角星". #cbNavMode itself is just a label+switch row, not a
-     button — click handling (see the JS wiring) covers the whole row so
-     tapping the label also toggles it, not just the pill itself. */
-  #cbNavMode{display:flex;align-items:center;gap:8px;cursor:pointer;flex-shrink:0;}
-  #cbNavModeLabel{font-size:clamp(11px,2.6vw,13px);color:var(--text-main);white-space:nowrap;}
-  .compact-switch{
-    width:clamp(38px,10vw,46px);height:clamp(22px,5.8vw,26px);border-radius:999px;
-    background:#8e8e93;position:relative;transition:background .15s ease;flex-shrink:0;
-  }
-  #cbNavMode.active .compact-switch{background:#34c759;}
-  .compact-switch-knob{
-    position:absolute;top:2px;left:2px;width:calc(100% - 4px);height:calc(100% - 4px);
-    aspect-ratio:1;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);
-    transition:transform .15s ease;
-  }
-  #cbNavMode.active .compact-switch-knob{transform:translateX(calc(clamp(38px,10vw,46px) - clamp(22px,5.8vw,26px)));}
+  /* row2: depth control + random-button strip + the "仅居中" button
+     (reusing btnCenterVisibleChildren's own click behavior, moved to the
+     end of this row per "把那个按钮的功能放到第二行最右边" — see the JS
+     wiring for cbCenterVisibleChildren) — random-button strip is flex:1
+     so however many custom buttons exist, the fixed-width depth control
+     and center button on either side never get squeezed off-screen. */
+  #compactBarRow2{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactBarRow3{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactRelaxLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
   #compactRelaxSlider{width:100%;accent-color:var(--accent);}
@@ -901,22 +886,38 @@
      gets no ring regardless of drilled state. */
   .ctv-row.ctv-collapsed{box-shadow:inset 0 0 0 1.5px var(--panel-border);}
 
-  /* long-press action sheet (edit / insert parent / sibling / batch) —
-     bottom-anchored list of full-width buttons, simplest possible
-     "picker" pattern for a handful of mutually-exclusive actions. */
-  #compactActionSheet{
+  /* long-press property panel — "长按展开节点属性编辑,把四个可视化属性
+     全都加进去,包括边框的类型,数量,节点的大小和颜色...所有按钮对齐尽量
+     精简". A single 2x2 grid, one column per attribute, each column's
+     label sits directly above its own control so all four controls line
+     up on the same row regardless of whether that column is a cycle
+     button or a +/- stepper. */
+  #compactPropertyPanel{
     position:fixed;left:0;right:0;bottom:0;z-index:1200;
-    display:flex;flex-direction:column;gap:1px;
-    padding:clamp(8px,2.4vw,12px);padding-bottom:calc(clamp(8px,2.4vw,12px) + env(safe-area-inset-bottom, 0px));
+    display:flex;flex-direction:column;gap:clamp(8px,2.4vw,12px);
+    padding:clamp(10px,3vw,14px);padding-bottom:calc(clamp(10px,3vw,14px) + env(safe-area-inset-bottom, 0px));
     background:var(--panel-bg);border-top:1px solid var(--panel-border);
     border-radius:14px 14px 0 0;box-shadow:var(--shadow);
   }
+  .cpp-grid{display:flex;justify-content:space-around;gap:clamp(6px,2vw,10px);}
+  .cpp-stat-col{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .cpp-stat-label{font-size:clamp(10.5px,2.6vw,12.5px);color:var(--text-dim);font-weight:600;white-space:nowrap;}
+  .cpp-stepper{display:flex;align-items:center;gap:6px;}
+  .cpp-stepper span{font-size:clamp(12px,3vw,14px);color:var(--text-main);font-weight:600;min-width:2.6em;text-align:center;}
+  .cpp-cycle-btn{
+    width:clamp(34px,9vw,42px);height:clamp(34px,9vw,42px);border-radius:10px;
+    border:1px solid var(--panel-border);background:var(--bg);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;color:var(--text-main);
+    padding:4px;
+  }
+  .cpp-cycle-btn svg{width:100%;height:100%;}
+  .cpp-color-swatch{width:60%;height:60%;border-radius:50%;border:2px solid;display:block;}
   .compact-action-btn{
     padding:clamp(11px,3.2vw,14px);border-radius:10px;border:none;background:transparent;
     color:var(--text-main);font-size:clamp(13px,3.4vw,15px);text-align:center;cursor:pointer;
   }
   .compact-action-btn:active{background:rgba(120,130,160,.14);}
-  .compact-action-cancel{color:var(--text-dim);margin-top:4px;border-top:1px solid var(--panel-border);border-radius:0;}
+  .compact-action-cancel{color:var(--text-dim);border-top:1px solid var(--panel-border);border-radius:0;}
 
   /* "折叠起来孩子的，节点周围有一圈额外边框" — a thin extra ring drawn on
      any canvas node that has A/B children currently collapsed, ONLY in
@@ -987,10 +988,11 @@
       <button class="compact-btn" id="cbTree" title="树状视图">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
       </button>
-      <button class="compact-btn" id="cbNavUp" title="跳转到母节点">⬆️</button>
-      <button class="compact-btn" id="cbNavDown" title="跳转到孩子节点">⬇️</button>
+      <button class="compact-btn" id="cbNavUp" title="跳转到根节点">⬆️</button>
+      <button class="compact-btn" id="cbNavDown" title="跳转到此节点（之前的子节点）">⬇️</button>
       <button class="compact-btn" id="cbNavSibling" title="循环跳转兄弟节点">➡️</button>
-      <div id="compactRandomZone"></div>
+      <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
+      <button class="compact-btn" id="cbAddToInbox" title="新建节点到 1 号收纳节点">✳️</button>
       <button class="compact-btn" id="cbMore" title="更多">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
       </button>
@@ -1001,10 +1003,8 @@
         <div id="compactDepthValue">2</div>
         <div id="compactDepthPlus">›</div>
       </div>
-      <div id="cbNavMode" title="导航模式：开启后触摸手势用于拖拽/变色/变形/退回上一级，而非可见性/大小/重要度">
-        <span id="cbNavModeLabel">导航模式</span>
-        <div class="compact-switch"><div class="compact-switch-knob"></div></div>
-      </div>
+      <div id="compactRandomZone"></div>
+      <button class="compact-btn" id="cbCenterVisibleChildren" title="把当前可见区域根节点的一级孩子整体平移到居中位置">🎯</button>
     </div>
     <div id="compactBarRow3">
       <span id="compactRelaxLabel">防碰撞强度</span>
@@ -1022,7 +1022,6 @@
       <button class="compact-more-btn" id="cbMoreFit">⛩<br>回到全局</button>
       <button class="compact-more-btn" id="cbMoreResetVisible">⭕️<br>局部重排</button>
       <button class="compact-more-btn" id="cbMoreResetAll">💣<br>全树重排</button>
-      <button class="compact-more-btn" id="cbMoreCenter">🎯<br>仅居中</button>
       <button class="compact-more-btn" id="cbMoreDesktop">🖥<br>返回电脑模式</button>
       <button class="compact-more-btn" id="cbMoreRaw">📱<br>手机原始模式</button>
     </div>
@@ -2975,8 +2974,8 @@ function recomputeCompactChildrenView(parentId, viewportW, viewportH){
   compactChildrenView.groupW = bbox.w*scale;
   compactChildrenView.groupH = bbox.h*scale;
   // clamp any EXISTING offset to the new scale/bbox immediately (rather
-  // than snapping back to 0) — this is what keeps a live navModeOn drag
-  // from visibly jumping the instant the bbox's aspect ratio crosses the
+  // than snapping back to 0) — this is what keeps a live pan/drag from
+  // visibly jumping the instant the bbox's aspect ratio crosses the
   // fit-width/fit-height threshold.
   clampCompactChildrenOffset(viewportW, viewportH);
 }
@@ -3654,101 +3653,38 @@ function startNodeDrag(ev, el, n){
 }
 
 /* ============================================================
-   手机精致模式: touch-gesture engine for canvas nodes.
-   Two entirely separate gesture vocabularies depending on navModeOn
-   (see the compact bar's cbNavMode toggle):
-
-   导航模式关闭 (navModeOn=false, the default):
+   手机精致模式: touch-gesture engine for canvas nodes — single unified
+   vocabulary (no more navModeOn split, no more drag-to-adjust gestures):
      - tap a leaf (or a collapsed branch)  -> cycle visibility (hidden/summary/detail)
-     - double-tap a leaf                   -> open the full edit dialog (openInsertDialog, mode:'edit' — same fullscreen-styled panel as long-press's "编辑内容")
      - tap a branch (children shown)       -> batch-cycle visibility of whole subtree
-     - horizontal drag                     -> adjust importance (borderLines, ±1 per ~40px)
-     - vertical drag                       -> adjust size (scale ×1.1 per ~40px, same crowd-avoid math as desktop ⌘+/-)
-     - long-press                          -> compactActionSheet (edit / insert parent / insert sibling / batch insert)
-   导航模式开启 (navModeOn=true):
-     - vertical drag                       -> cycle color preset
-     - horizontal drag                     -> cycle border style
-     - long-press + drag                   -> reposition (same collision-avoid drag as startNodeDrag)
      - double-tap                          -> become focus root (like desktop Shift+Enter)
-   Both modes: pinch (2-finger) on blank canvas -> go up one level (like desktop Shift+Up).
+     - long-press                          -> compactPropertyPanel (border style/lines, size, color — see its own comment)
+   pinch (2-finger) on blank canvas -> go up one level (like desktop Shift+Up).
    ============================================================ */
 var LONG_PRESS_MS = 480;
-var DRAG_AXIS_PX = 40; // px of movement per one "step" of whichever axis-mapped stat is being adjusted
 function compactNodeMousedown(ev, el, n){
   var startX = ev.clientX, startY = ev.clientY;
-  var longPressTimer = null, longPressFired = false, axisLocked = null, appliedSteps = 0;
-  var startBorderLines = n.borderLines||1, startColorIdx = n.color||0, startBorderIdx = BORDER_STYLES.indexOf(n.border);
-  if(startBorderIdx<0) startBorderIdx = 0;
-  var didDrag = false;
+  var longPressTimer = null, longPressFired = false, moved = false;
 
   function clearLongPress(){ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; } }
   longPressTimer = setTimeout(function(){
     longPressFired = true;
-    if(navModeOn){
-      // 导航模式's long-press meaning is "start a reposition drag" — reuse
-      // the EXACT SAME collision-avoid drag desktop already has, just
-      // gated behind a long-press instead of firing on every mousedown.
-      startNodeDrag(ev, el, n);
-    } else {
-      openCompactActionSheet(n);
-    }
+    openCompactPropertyPanel(n);
   }, LONG_PRESS_MS);
 
   function onMove(e){
-    if(longPressFired) return; // navModeOn's drag branch takes over via startNodeDrag's own listeners
+    if(longPressFired) return;
     var dx = e.clientX-startX, dy = e.clientY-startY;
-    if(!axisLocked && (Math.abs(dx)>10 || Math.abs(dy)>10)){
-      axisLocked = Math.abs(dx)>Math.abs(dy) ? 'x' : 'y';
+    if(!moved && Math.abs(dx)+Math.abs(dy)>10){
+      moved = true;
       clearLongPress();
-    }
-    if(!axisLocked) return;
-    didDrag = true;
-    if(!navModeOn){
-      if(axisLocked==='x'){
-        // 重要度: right = +1, left = -1 per DRAG_AXIS_PX, clamped 1-5
-        var steps = Math.trunc(dx/DRAG_AXIS_PX);
-        var nv = clamp(startBorderLines+steps, BORDER_LINES_MIN, BORDER_LINES_MAX);
-        if(nv!==n.borderLines){ n.borderLines = nv; render(); }
-      } else {
-        // 大小: up = bigger, down = smaller, same 1.1x/0.9x-per-step and
-        // crowd-avoid interaction as desktop's ⌘+/⌘- (nodeMousedown's own
-        // effMeta-less path reads scaleXKids/scaleXNoKids the same way).
-        var steps2 = Math.trunc(-dy/DRAG_AXIS_PX);
-        if(steps2!==appliedSteps){
-          var factor = Math.pow(1.1, steps2-appliedSteps);
-          if(n.drilled){ n.scaleXKids*=factor; n.scaleYKids*=factor; }
-          else { n.scaleXNoKids*=factor; n.scaleYNoKids*=factor; }
-          appliedSteps = steps2;
-          render();
-        }
-      }
-    } else {
-      if(axisLocked==='y'){
-        // 颜色: one step per DRAG_AXIS_PX of vertical movement, cycling
-        // through COLOR_PRESETS (wraps both directions).
-        var cSteps = Math.trunc(-dy/DRAG_AXIS_PX);
-        var cIdx = ((startColorIdx+cSteps)%COLOR_PRESETS.length+COLOR_PRESETS.length)%COLOR_PRESETS.length;
-        if(cIdx!==n.color){ n.color = cIdx; render(); }
-      } else {
-        // 边框形状: same idea, cycling BORDER_STYLES.
-        var bSteps = Math.trunc(dx/DRAG_AXIS_PX);
-        var bIdx = ((startBorderIdx+bSteps)%BORDER_STYLES.length+BORDER_STYLES.length)%BORDER_STYLES.length;
-        if(BORDER_STYLES[bIdx]!==n.border){ n.border = BORDER_STYLES[bIdx]; render(); }
-      }
     }
   }
   function onUp(){
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     clearLongPress();
-    if(longPressFired) return; // openCompactActionSheet or startNodeDrag already took over
-    if(didDrag){
-      pushUndo(); // snapshot AFTER the fact is fine here since nothing else mutated state mid-drag except this gesture's own fields
-      scheduleSave();
-      render();
-      return;
-    }
-    // no long-press, no drag -> a plain tap.
+    if(longPressFired || moved) return; // openCompactPropertyPanel already took over, or this was just an accidental finger slide, not a tap
     compactNodeTap(n, ev);
   }
   window.addEventListener('mousemove', onMove);
@@ -3761,24 +3697,14 @@ function compactIsBranch(n){
   return n.drilled && children(n.id).some(function(c){ return c.category!=='C'; });
 }
 function compactNodeTap(n, ev){
-  if(navModeOn){
-    if(isDoubleClick('compact:'+n.id, ev)){
-      // 双击：设为可见区域根节点，等价 shift+enter
-      pushUndo();
-      n.drilled = true;
-      state.focusId = n.id;
-      selectedId = null;
-      scheduleSave(); render();
-    }
-    return;
-  }
   if(isDoubleClick('compact:'+n.id, ev)){
-    // 双击叶子节点：打开完整编辑框（summary/detail/分类/重要度/熟练度/
-    // 确认/取消），与电脑版option+单击弹出的面板同一个，只是该面板本身
-    // 在手机精致模式下已经是全屏排版（见#insertDialog的
-    // html.mobile-compact-mode override）——不再是一个只有detail、没有任何
-    // 提示的空白编辑器。
-    openInsertDialog({mode:'edit', node:n});
+    // 双击：设为可见区域根节点，等价 shift+enter — one unconditional
+    // behavior now, not gated behind navModeOn.
+    pushUndo();
+    n.drilled = true;
+    state.focusId = n.id;
+    selectedId = null;
+    scheduleSave(); render();
     return;
   }
   pushUndo();
@@ -3810,41 +3736,103 @@ function compactNodeTap(n, ev){
   triggerGlow();
   render();
 }
-/* long-press action sheet: edit / insert parent / insert sibling(s) /
-   batch-insert children — "长按节点，可以选择编辑内容，插入父节点，添加
-   兄弟节点，批量添加兄弟节点". Built fresh each open rather than living in
-   static HTML since it has no persistent state worth keeping around. */
-var compactActionSheetEl = null;
-function closeCompactActionSheet(){
-  if(compactActionSheetEl){ compactActionSheetEl.remove(); compactActionSheetEl = null; }
+/* long-press property panel: the four VISUAL attributes a node has, all
+   in one compact grid instead of the old drag-to-adjust gestures —
+   "长按展开节点属性编辑，把四个可视化属性全都加进去，包括边框的类型，
+   数量，节点的大小和颜色". 边框类型/颜色 are single buttons that cycle
+   through their preset list on each tap (same presets/order the desktop
+   style-popover already uses — COLOR_PRESETS/BORDER_STYLES); 节点大小/
+   边框数量 are +/- steppers, matching the same visual language the
+   insert/edit dialog's own importance/proficiency steppers already use
+   (.id-stat-col/.id-stat-stepper) — "所有按钮对齐尽量精简". Rebuilt on
+   every single change (rather than patching the DOM in place) since the
+   whole panel is cheap and this keeps every displayed value trivially
+   in sync with the node's current state. */
+var compactPropertyPanelEl = null;
+function closeCompactPropertyPanel(){
+  if(compactPropertyPanelEl){ compactPropertyPanelEl.remove(); compactPropertyPanelEl = null; }
 }
-function openCompactActionSheet(n){
-  closeCompactActionSheet();
-  var sheet = document.createElement('div');
-  sheet.id = 'compactActionSheet';
-  var actions = [
-    {label:'编辑内容', fn:function(){ openInsertDialog({mode:'edit', node:n}); }},
-    {label:'插入父节点', fn:function(){ openInsertDialog({mode:'parent', anchorId:n.id}); }},
-    {label:'添加兄弟节点', fn:function(){ openInsertDialog({mode:'sibling', anchorId:n.id, dir:1}); }},
-    {label:'批量添加兄弟节点', fn:function(){ openInsertDialog({mode:'sibling', anchorId:n.id, dir:1, batch:true}); }}
-  ];
-  actions.forEach(function(a){
-    var b = document.createElement('button');
-    b.className = 'compact-action-btn';
-    b.textContent = a.label;
-    b.addEventListener('click', function(){ closeCompactActionSheet(); a.fn(); });
-    sheet.appendChild(b);
-  });
-  var cancel = document.createElement('button');
-  cancel.className = 'compact-action-btn compact-action-cancel';
-  cancel.textContent = '取消';
-  cancel.addEventListener('click', closeCompactActionSheet);
-  sheet.appendChild(cancel);
-  document.body.appendChild(sheet);
-  compactActionSheetEl = sheet;
-  setTimeout(function(){ document.addEventListener('mousedown', closeActionSheetOnce, {capture:true}); }, 0);
+function openCompactPropertyPanel(n){
+  closeCompactPropertyPanel();
+  var panel = document.createElement('div');
+  panel.id = 'compactPropertyPanel';
+
+  function statCol(label, valueText, onMinus, onPlus){
+    var col = document.createElement('div');
+    col.className = 'cpp-stat-col';
+    var lab = document.createElement('span'); lab.className = 'cpp-stat-label'; lab.textContent = label;
+    var stepper = document.createElement('div'); stepper.className = 'cpp-stepper';
+    var minus = document.createElement('button'); minus.className = 'mini-btn'; minus.textContent = '－';
+    var val = document.createElement('span'); val.textContent = valueText;
+    var plus = document.createElement('button'); plus.className = 'mini-btn'; plus.textContent = '＋';
+    minus.addEventListener('click', function(ev){ ev.stopPropagation(); onMinus(); openCompactPropertyPanel(n); });
+    plus.addEventListener('click', function(ev){ ev.stopPropagation(); onPlus(); openCompactPropertyPanel(n); });
+    stepper.appendChild(minus); stepper.appendChild(val); stepper.appendChild(plus);
+    col.appendChild(lab); col.appendChild(stepper);
+    return col;
+  }
+  function cycleCol(label, previewHtml, onCycle){
+    var col = document.createElement('div');
+    col.className = 'cpp-stat-col';
+    var lab = document.createElement('span'); lab.className = 'cpp-stat-label'; lab.textContent = label;
+    var btn = document.createElement('button'); btn.className = 'cpp-cycle-btn';
+    btn.innerHTML = previewHtml;
+    btn.addEventListener('click', function(ev){ ev.stopPropagation(); onCycle(); openCompactPropertyPanel(n); });
+    col.appendChild(lab); col.appendChild(btn);
+    return col;
+  }
+
+  var grid = document.createElement('div');
+  grid.className = 'cpp-grid';
+  grid.appendChild(cycleCol('颜色', (function(){
+    var preset = COLOR_PRESETS[n.color % COLOR_PRESETS.length];
+    var sw = isDarkTheme() ? preset.fillD : preset.fillL;
+    var bd = isDarkTheme() ? preset.borderD : preset.borderL;
+    return '<span class="cpp-color-swatch" style="background:'+sw+';border-color:'+bd+';"></span>';
+  })(), function(){
+    pushUndo();
+    n.color = (n.color+1) % COLOR_PRESETS.length;
+    scheduleSave(); render();
+  }));
+  grid.appendChild(cycleCol('边框类型', borderPreviewSvg(n.border), function(){
+    pushUndo();
+    var idx = BORDER_STYLES.indexOf(n.border);
+    n.border = BORDER_STYLES[(idx+1) % BORDER_STYLES.length];
+    scheduleSave(); render();
+  }));
+  grid.appendChild(statCol('边框数量', n.borderLines||1, function(){
+    pushUndo();
+    n.borderLines = clamp((n.borderLines||1)-1, BORDER_LINES_MIN, BORDER_LINES_MAX);
+    propagateStatDown(n.id, 'borderLines', n.borderLines);
+    scheduleSave(); render();
+  }, function(){
+    pushUndo();
+    n.borderLines = clamp((n.borderLines||1)+1, BORDER_LINES_MIN, BORDER_LINES_MAX);
+    propagateStatDown(n.id, 'borderLines', n.borderLines);
+    scheduleSave(); render();
+  }));
+  grid.appendChild(statCol('大小', scalarScaleFor(n).toFixed(2)+'×', function(){
+    pushUndo();
+    if(n.drilled){ n.scaleXKids*=0.9; n.scaleYKids*=0.9; } else { n.scaleXNoKids*=0.9; n.scaleYNoKids*=0.9; }
+    scheduleSave(); render();
+  }, function(){
+    pushUndo();
+    if(n.drilled){ n.scaleXKids*=1.1; n.scaleYKids*=1.1; } else { n.scaleXNoKids*=1.1; n.scaleYNoKids*=1.1; }
+    scheduleSave(); render();
+  }));
+  panel.appendChild(grid);
+
+  var close = document.createElement('button');
+  close.className = 'compact-action-btn compact-action-cancel';
+  close.textContent = '完成';
+  close.addEventListener('click', closeCompactPropertyPanel);
+  panel.appendChild(close);
+
+  document.body.appendChild(panel);
+  compactPropertyPanelEl = panel;
+  setTimeout(function(){ document.addEventListener('mousedown', closePropertyPanelOnce, {capture:true}); }, 0);
 }
-function closeActionSheetOnce(e){ if(!e.target.closest('#compactActionSheet')) closeCompactActionSheet(); }
+function closePropertyPanelOnce(e){ if(!e.target.closest('#compactPropertyPanel')) closeCompactPropertyPanel(); }
 
 /* ============================================================
    style popover (color + border)
@@ -6601,7 +6589,6 @@ var cbTreeEl = document.getElementById('cbTree');
 var cbNavUpEl = document.getElementById('cbNavUp');
 var cbNavDownEl = document.getElementById('cbNavDown');
 var cbNavSiblingEl = document.getElementById('cbNavSibling');
-var cbNavModeEl = document.getElementById('cbNavMode');
 var cbMoreEl = document.getElementById('cbMore');
 var compactMoreSheetEl = document.getElementById('compactMoreSheet');
 var compactRandomZoneEl = document.getElementById('compactRandomZone');
@@ -6609,38 +6596,37 @@ var compactDepthValueEl = document.getElementById('compactDepthValue');
 var compactDepthMinusEl = document.getElementById('compactDepthMinus');
 var compactDepthPlusEl = document.getElementById('compactDepthPlus');
 var compactRelaxSliderEl = document.getElementById('compactRelaxSlider');
-var navModeOn = false; // "导航模式" — OFF by default, see task's own spec
-// remembers, per parent id, which child ⬆️ last stepped UP FROM — so a
-// following ⬇️ on that same parent returns to that exact child instead of
-// an arbitrary/first one — "跳转到孩子节点(如果刚执行过⬆️按钮,这次需要
-//回到之前的节点)". Cleared for a parent the moment ⬇️ actually consumes
-// it (see cbNavDownEl below), so a SECOND ⬇️ press without an intervening
-// ⬆️ falls through to the "first child" default rather than being stuck
+// remembers which direct child of state.rootId ⬆️ last stepped up FROM —
+// so a following ⬇️ returns to that exact child instead of an arbitrary
+// one — "向下表示切换到此节点...如果刚刚使用过向上切换到跟节点则需要退回
+// 到之前同一个子节点". Cleared the moment ⬇️ actually consumes it (see
+// cbNavDownEl below), so a second ⬇️ press without an intervening ⬆️
+// falls back to the "first child" default instead of being stuck
 // re-visiting the same remembered child forever.
-var compactLastChildFrom = {};
+var compactLastChildFromRoot = null;
 
 cbSearchEl.addEventListener('click', function(){ btnSearch.click(); });
 cbTreeEl.addEventListener('click', function(){ openCompactTreeSheet(); });
 cbNavUpEl.addEventListener('click', function(){
+  // "向上表示切换到跟节点的节点" — jumps straight to state.rootId, not
+  // just the immediate parent.
   var curId = state.focusId;
-  var pn = parentOf(curId);
-  if(!pn) return;
+  if(curId===state.rootId) return;
   pushUndo();
-  compactLastChildFrom[pn.id] = curId;
-  state.focusId = pn.id;
-  collapseBeyondDepth(pn.id, appParams.maxAutoDepth);
+  compactLastChildFromRoot = curId;
+  state.focusId = state.rootId;
+  collapseBeyondDepth(state.rootId, appParams.maxAutoDepth);
   scheduleSave(); render();
 });
 cbNavDownEl.addEventListener('click', function(){
-  var curId = state.focusId;
-  var kids = children(curId);
+  // "向下表示切换到此节点" — returns to whichever direct child of the
+  // ROOT ⬆️ most recently left, if it's still a real child of the root;
+  // otherwise falls back to the root's own first child.
+  var kids = children(state.rootId);
   if(!kids.length) return;
-  // prefer the child ⬆️ most recently stepped up FROM, if it's still a
-  // real direct child of the current focus — otherwise just the first one.
-  var rememberedId = compactLastChildFrom[curId];
-  var target = (rememberedId && kids.some(function(k){ return k.id===rememberedId; }))
-    ? node(rememberedId) : kids[0];
-  delete compactLastChildFrom[curId]; // consumed — a second ⬇️ press falls back to "first child"
+  var target = (compactLastChildFromRoot && kids.some(function(k){ return k.id===compactLastChildFromRoot; }))
+    ? node(compactLastChildFromRoot) : kids[0];
+  compactLastChildFromRoot = null; // consumed — a second ⬇️ press falls back to "first child"
   pushUndo();
   target.drilled = true;
   state.focusId = target.id;
@@ -6659,9 +6645,39 @@ cbNavSiblingEl.addEventListener('click', function(){
   setExpandedToDepth(nextId, appParams.maxAutoDepth);
   scheduleSave(); render();
 });
-cbNavModeEl.addEventListener('click', function(){
-  navModeOn = !navModeOn;
-  cbNavModeEl.classList.toggle('active', navModeOn);
+/* "第一个+是在当前的节点下面新建一个小孩和其他可以看见的小孩平级,或者
+   如果没有已知的小孩,那么则新建第一个孩子节点" — a plain addChild under
+   the current focus root, same defaults every other "insert" path in this
+   file already uses (category/borderLines/masterLevel all fall through to
+   makeNode's own defaults, exactly like a bare, no-dialog insert). */
+document.getElementById('cbAddChild').addEventListener('click', function(){
+  pushUndo();
+  var pid = state.focusId;
+  var newId = addChild(pid, '', '');
+  node(pid).drilled = true;
+  selectedId = newId; triggerGlow();
+  scheduleSave(); render();
+});
+/* "第二个+表示在根节点目录下新建到一个特殊的编号为一的节点,如果没有这个
+   节点就创建,否则直接追加到已有的孩子列表里面" — looks for a direct child
+   of state.rootId whose summary is exactly "1" (plain-text compare, same
+   richToPlain everything else in this file already uses to read a rich-
+   text summary as plain text); creates it if missing, then always adds
+   the new node as ITS child, never as a second "1" node.
+   */
+document.getElementById('cbAddToInbox').addEventListener('click', function(){
+  pushUndo();
+  var rootKids = children(state.rootId);
+  var inbox = rootKids.filter(function(k){ return richToPlain(k.summary)==='1'; })[0];
+  if(!inbox){
+    var inboxId = addChild(state.rootId, '1', '');
+    inbox = node(inboxId);
+    node(state.rootId).drilled = true;
+  }
+  var newId = addChild(inbox.id, '', '');
+  inbox.drilled = true;
+  selectedId = newId; triggerGlow();
+  scheduleSave(); render();
 });
 cbMoreEl.addEventListener('click', function(){
   compactMoreSheetEl.classList.toggle('open');
@@ -6676,7 +6692,7 @@ document.getElementById('cbMoreExport').addEventListener('click', function(){ do
 document.getElementById('cbMoreFit').addEventListener('click', function(){ document.getElementById('btnFit').click(); });
 document.getElementById('cbMoreResetVisible').addEventListener('click', function(){ document.getElementById('btnResetVisibleSizes').click(); });
 document.getElementById('cbMoreResetAll').addEventListener('click', function(){ document.getElementById('btnResetAllSizes').click(); });
-document.getElementById('cbMoreCenter').addEventListener('click', function(){ document.getElementById('btnCenterVisibleChildren').click(); });
+document.getElementById('cbCenterVisibleChildren').addEventListener('click', function(){ document.getElementById('btnCenterVisibleChildren').click(); });
 document.getElementById('cbMoreDesktop').addEventListener('click', function(){
   compactMoreSheetEl.classList.remove('open');
   appParams.uiMode = 'desktop'; applyUiMode('desktop'); saveParams();
