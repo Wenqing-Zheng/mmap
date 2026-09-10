@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>空间思维导图</title>
 <style>
   :root{
@@ -529,11 +529,18 @@
   #insertOverlay{
     position:fixed;inset:0;background:rgba(20,22,30,.28);z-index:3000;display:none;
     align-items:center;justify-content:center;
+    /* the viewport meta's maximum-scale=1 stops iOS/Android's own
+       double-tap/pinch page zoom globally, but touch-action is still the
+       thing that actually keeps a stray 2-finger touch ON this overlay
+       from being interpreted as a native pinch-zoom gesture in the first
+       place — belt-and-suspenders against the same "长按/双指后页面残留
+       放大" class of bug the viewport meta targets. */
+    touch-action:manipulation;
   }
   #insertOverlay.show{display:flex;}
   #insertDialog{
     width:420px;background:var(--panel-bg);border-radius:16px;box-shadow:var(--shadow);padding:18px;
-    position:relative;
+    position:relative;touch-action:manipulation;
   }
   /* batch-insert indicator: only shown while pendingInsert.batch is true —
      ⌘Enter keeps this dialog cycling open for the next sibling/child
@@ -614,8 +621,13 @@
     width:100%;height:100dvh;border-radius:0;box-shadow:none;
     padding:clamp(10px,3vw,14px);display:flex;flex-direction:column;overflow-y:auto;
   }
-  html.mobile-compact-mode #insertSummary{margin-bottom:8px;max-height:30vh;}
-  html.mobile-compact-mode #insertDetail{flex:1;min-height:0;margin-bottom:8px;}
+  /* iOS Safari auto-zooms the whole page on focusing any input/
+     contenteditable under 16px, and after the keyboard closes the
+     zoom sometimes never resets — font-size:16px on both fields (up
+     from the desktop dialog's 14px/13px) keeps focus from ever
+     triggering that zoom in the first place. */
+  html.mobile-compact-mode #insertSummary{margin-bottom:8px;max-height:30vh;font-size:16px;}
+  html.mobile-compact-mode #insertDetail{flex:1;min-height:0;margin-bottom:8px;font-size:16px;}
   html.mobile-compact-mode .id-attr-grid{margin-bottom:8px;}
 
   /* ---------- mobile mode: bottom nav bar + bottom-sheet flyouts ----------
@@ -755,7 +767,7 @@
     display:flex;flex-direction:column;order:2;width:100%;
     background:var(--panel-bg);border-top:1px solid var(--panel-border);
     padding:clamp(4px,1.2vw,8px) clamp(6px,2vw,12px);gap:clamp(3px,1vw,6px);
-    box-sizing:border-box;
+    box-sizing:border-box;touch-action:manipulation;
   }
   #compactBarRow1{display:flex;align-items:center;gap:clamp(4px,1.5vw,10px);}
   .compact-btn{
@@ -764,22 +776,38 @@
     border-radius:clamp(8px,2vw,12px);border:1px solid var(--panel-border);
     background:var(--bg);color:var(--text-main);cursor:pointer;
     font-size:clamp(15px,4vw,19px);
+    /* without this, iOS's native 300ms tap-delay (waiting to see if a
+       second tap arrives to double-tap-zoom) sat in front of EVERY
+       button here — a real tap could visually appear to need "several
+       presses" before the click actually registered, exactly "拖拽开关
+       点击多次才能生效". touch-action:manipulation tells the browser
+       these are single-tap targets, so it fires click immediately with
+       no double-tap-zoom wait — belt-and-suspenders alongside the
+       viewport meta's own user-scalable=no. */
+    touch-action:manipulation;
   }
   .compact-btn svg{width:55%;height:55%;}
   .compact-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
-  /* ⬆️/⬇️ stacked vertically in the SAME footprint one .compact-btn would
-     take — "⬆️和⬇️按钮要垂直叠起来,更符合直观" (up-then-down reads more
-     naturally as a single 2-row control than two side-by-side buttons). */
-  .compact-btn-stack{
-    display:flex;flex-direction:column;flex-shrink:0;gap:2px;
-    width:clamp(34px,10vw,46px);height:clamp(34px,10vw,46px);
+  /* ⬆️/⬇️/➡️ nav cluster: a self-contained 2x2 grid (⬆️ top-left, ⬇️
+     bottom-left, ➡️ spanning both rows on the right, vertically centered
+     between them) — full-size buttons, not the old half-height stack,
+     per "不要把上下按钮压缩只有一半高度...一定要保证这两个按钮上下左右
+     对齐...➡️按钮如果能和上下按钮竖直方向居中对齐更好". Sits as ONE flex
+     child inside row1; row1's own height grows to fit it (2 button-rows
+     tall), and row1's other buttons (search/tree/add/more) stay
+     vertically centered against that taller row via row1's own
+     align-items:center, so nothing else needs to change size. */
+  .compact-nav-cluster{
+    display:grid;flex-shrink:0;
+    grid-template-columns:clamp(34px,10vw,46px) clamp(34px,10vw,46px);
+    grid-template-rows:clamp(34px,10vw,46px) clamp(34px,10vw,46px);
+    gap:clamp(3px,1vw,6px);
+    grid-template-areas:"up right" "down right";
   }
-  .compact-btn-half{
-    flex:1;display:flex;align-items:center;justify-content:center;
-    border-radius:clamp(6px,1.6vw,9px);border:1px solid var(--panel-border);
-    background:var(--bg);color:var(--text-main);cursor:pointer;
-    font-size:clamp(10px,2.8vw,13px);padding:0;
-  }
+  .compact-nav-cluster .compact-btn{width:100%;height:100%;}
+  #cbNavUp{grid-area:up;}
+  #cbNavDown{grid-area:down;}
+  #cbNavSibling{grid-area:right;}
   /* random-pick buttons render into here (see renderCompactRandomZone) —
      each one is its OWN first-class button, same footprint as any other
      compact-btn, laid out in a horizontally-scrollable strip so an
@@ -813,12 +841,11 @@
   }
   #compactDepthCtl > div + div{border-left:1px solid var(--panel-border);}
   #compactDepthCtl > div.pressed{background:rgba(120,130,160,.18);}
-  /* row2: depth control + drag-toggle + random-button strip + the "局部
-     重排" button (reusing btnResetVisibleSizes' own click behavior, moved
-     to the end of this row per "第二排最后一个不要target(居中显示),而是
-     要第一个reset" — see the JS wiring for cbResetVisibleSizes) —
-     random-button strip is flex:1 so however many custom buttons exist,
-     the fixed-width controls on either side never get squeezed off-screen. */
+  /* row2: depth control + drag-toggle + random-button strip + 🎯(仅居中,
+     reusing btnCenterVisibleChildren) + ⭕️(局部重排, reusing
+     btnResetVisibleSizes) at the end — random-button strip is flex:1 so
+     however many custom buttons exist, the fixed-width controls on
+     either side never get squeezed off-screen. */
   #compactBarRow2{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactBarRow3{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactRelaxLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
@@ -974,11 +1001,11 @@
       <button class="compact-btn" id="cbTree" title="树状视图">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
       </button>
-      <div class="compact-btn-stack" id="cbNavUpDownStack">
-        <button class="compact-btn-half" id="cbNavUp" title="跳转到根节点">⬆️</button>
-        <button class="compact-btn-half" id="cbNavDown" title="跳转到此节点（之前的子节点）">⬇️</button>
+      <div class="compact-nav-cluster">
+        <button class="compact-btn" id="cbNavUp" title="跳转到根节点">⬆️</button>
+        <button class="compact-btn" id="cbNavDown" title="跳转到此节点（之前的子节点）">⬇️</button>
+        <button class="compact-btn" id="cbNavSibling" title="循环跳转兄弟节点">➡️</button>
       </div>
-      <button class="compact-btn" id="cbNavSibling" title="循环跳转兄弟节点">➡️</button>
       <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
       <button class="compact-btn" id="cbAddToInbox" title="新建节点到 1 号收纳节点">✳️</button>
       <button class="compact-btn" id="cbMore" title="更多">
@@ -993,6 +1020,7 @@
       </div>
       <button class="compact-btn" id="cbDragToggle" title="拖拽平移：开启后可拖动一级子节点">✋</button>
       <div id="compactRandomZone"></div>
+      <button class="compact-btn" id="cbCenterVisibleChildren" title="把当前可见区域根节点的一级孩子整体平移到居中位置">🎯</button>
       <button class="compact-btn" id="cbResetVisibleSizes" title="重置当前可见区域一级子节点的位置、大小和相对排版">⭕️</button>
     </div>
     <div id="compactBarRow3">
@@ -2909,6 +2937,14 @@ function render(){
     // dimensions) already assumes — without this, its computed scale
     // would get silently double-applied on top of whatever camera.scale
     // fitCameraToRoot happened to pick.
+    // A focus change (tree-view jump, ⬆️/⬇️/➡️, double-tap, pinch) means
+    // this is a DIFFERENT root's own children-group now — any pan offset
+    // left over from the PREVIOUS root's group must not carry over onto
+    // it (a stale offsetX/Y computed against the old bbox could easily
+    // sit outside the new bbox's own valid range, clipping an edge until
+    // the next drag/recompute corrected it) — "跳转以后...文本框全都要在
+    // 屏幕以内".
+    if(focusChanged){ compactChildrenView.offsetX = 0; compactChildrenView.offsetY = 0; }
     camera.scale = 1;
     var cvis = visibleCanvasRect(), cfull = canvasWrap.getBoundingClientRect();
     camera.x = (cvis.left - cfull.left) + cvis.width/2;
@@ -2977,6 +3013,22 @@ function childrenGroupBBox(parentId){
    (a pure display-layer pan) are ever touched here; no child's real
    px/py is read for anything except measuring the bbox. */
 function recomputeCompactChildrenView(parentId, viewportW, viewportH){
+  // while a direct child of THIS group is being actively dragged
+  // (compactDragModeOn's ✋ pan/resize gesture), that child's OWN px/py is
+  // changing every single onMove frame — which changes the group's bbox —
+  // which would otherwise recompute a NEW scale/offset here every frame
+  // too. startNodeDrag's dragScale is captured ONCE at drag-start and
+  // never updates for the drag's whole duration, so a live-recomputed
+  // scale immediately desyncs pointer math (frozen dragScale) from the
+  // actual on-screen transform (live scale) — every frame's dx/dy lands
+  // at the WRONG place relative to what the finger just did, which reads
+  // as "跳一下即停" (jump-then-stop) instead of a smooth continuous drag.
+  // Freezing scale/offset for this group's whole drag duration (skip the
+  // recompute below entirely) keeps both sides of that math in lockstep;
+  // the group re-settles to its true fit on the very next render after
+  // mouseup, once draggingNodeId clears.
+  var draggedNode = draggingNodeId ? node(draggingNodeId) : null;
+  if(draggedNode && draggedNode.parentId===parentId) return;
   var bbox = childrenGroupBBox(parentId);
   if(!bbox || bbox.w<=0 || bbox.h<=0){
     compactChildrenView.scale = 1; compactChildrenView.offsetX = 0; compactChildrenView.offsetY = 0;
@@ -2991,7 +3043,21 @@ function recomputeCompactChildrenView(parentId, viewportW, viewportH){
   // matching aspect ratios (viewportAspect===groupAspect) falls into the
   // width-fit branch, which is equivalent (nothing to scroll either way).
   var fitHeight = groupAspect > viewportAspect;
-  var scale = fitHeight ? (availH/bbox.h) : (availW/bbox.w);
+  // scale must satisfy BOTH bbox.w*scale<=availW AND bbox.h*scale<=availH
+  // — picking only the FIT axis's own ratio (availH/bbox.h when
+  // fitHeight, say) and skipping the OTHER axis's ratio entirely was the
+  // actual overflow bug: a group whose aspect ratio calls for
+  // fit-by-height can still, after that one-axis scale, come out WIDER
+  // than the viewport on the perpendicular axis (e.g. a 900x300 group in
+  // a 375x600 portrait viewport: fit-by-height's own raw ratio is 1.9x —
+  // a MAGNIFY, immediately clamped to 1 by the anti-magnify rule below,
+  // which then left the now-unscaled 900px-wide group still overflowing
+  // the 375px-wide screen entirely unshrunk) — "跳转以后...文本框全都要在
+  // 屏幕以内,而不是现在这样有一半突出去". Taking the min of BOTH axes'
+  // ratios guarantees the group fits inside availW×availH on every side
+  // simultaneously, with the SAME fitHeight/axis choice still governing
+  // which direction stays scrollable afterward.
+  var scale = Math.min(availW/bbox.w, availH/bbox.h);
   // NEVER magnify past the children's own natural (authored) size — only
   // ever shrink an oversized group down to fit. Without this cap, a root
   // with just a couple of small/sparse children (a natural bbox far
@@ -6089,6 +6155,7 @@ document.getElementById('btnResetVisibleSizes').addEventListener('click', functi
   symmetrizeChildrenOf(focusId);
   scheduleSave();
   render();
+  resyncRootView();
 });
 document.getElementById('btnResetAllSizes').addEventListener('click', function(){
   // "全树重排": every node in the whole tree, at every depth — reset every
@@ -6614,6 +6681,7 @@ document.getElementById('cbMoreImport').addEventListener('click', function(){ do
 document.getElementById('cbMoreExport').addEventListener('click', function(){ document.getElementById('btnExport').click(); });
 document.getElementById('cbMoreFit').addEventListener('click', function(){ document.getElementById('btnFit').click(); });
 document.getElementById('cbMoreResetAll').addEventListener('click', function(){ document.getElementById('btnResetAllSizes').click(); });
+document.getElementById('cbCenterVisibleChildren').addEventListener('click', function(){ document.getElementById('btnCenterVisibleChildren').click(); });
 document.getElementById('cbResetVisibleSizes').addEventListener('click', function(){ document.getElementById('btnResetVisibleSizes').click(); });
 document.getElementById('cbMoreDesktop').addEventListener('click', function(){
   compactMoreSheetEl.classList.remove('open');
@@ -6685,10 +6753,21 @@ function renderCompactTreeView(){
     tag.textContent = n.category+'('+importanceOf(n)+','+n.masterLevel+')';
     tag.addEventListener('click', function(ev){
       ev.stopPropagation();
-      makeTreeSelectionVisibleOnCanvas(id);
-      selectedId = id;
-      triggerGlow();
+      // 手机精致模式's own jump semantics: the TAPPED node itself becomes
+      // the global root — NOT its parent, unlike desktop's
+      // makeTreeSelectionVisibleOnCanvas (kept 100% unchanged for
+      // desktop/手机原始模式's own tree view, which intentionally shows
+      // the clicked node as a first-level child of its parent instead) —
+      // "选择的按钮应该是全局根节点位置,而不是现在的一级节点位置".
+      pushUndo();
+      n.drilled = true;
+      state.focusId = id;
+      collapseBeyondDepth(id, appParams.maxAutoDepth);
+      setExpandedToDepth(id, appParams.maxAutoDepth);
+      selectedId = null;
+      scheduleSave();
       render();
+      resyncRootView();
       closeCompactTreeSheet();
     });
     row.appendChild(tag);
