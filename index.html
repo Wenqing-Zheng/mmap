@@ -722,7 +722,10 @@
   html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame > .mm-miniature-inner > .mm-frame{
     background:transparent!important;box-shadow:none!important;
   }
-  html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame .mm-border-svg{display:none;}
+  html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame > .mm-frame > .mm-border-svg,
+  html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame > .mm-miniature-inner > .mm-frame > .mm-border-svg{
+    display:none;
+  }
   /* the root's OWN centered label — a fixed overlay on #canvasWrap
      itself (not a descendant of the scaled/panned #stage), so its font
      size/position stay constant on screen regardless of camera.scale or
@@ -762,6 +765,7 @@
     width:clamp(34px,10vw,46px);height:clamp(34px,10vw,46px);
     border-radius:clamp(8px,2vw,12px);border:1px solid var(--panel-border);
     background:var(--bg);color:var(--text-main);cursor:pointer;
+    font-size:clamp(15px,4vw,19px);
   }
   .compact-btn svg{width:55%;height:55%;}
   .compact-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
@@ -983,6 +987,9 @@
       <button class="compact-btn" id="cbTree" title="树状视图">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
       </button>
+      <button class="compact-btn" id="cbNavUp" title="跳转到母节点">⬆️</button>
+      <button class="compact-btn" id="cbNavDown" title="跳转到孩子节点">⬇️</button>
+      <button class="compact-btn" id="cbNavSibling" title="循环跳转兄弟节点">➡️</button>
       <div id="compactRandomZone"></div>
       <button class="compact-btn" id="cbMore" title="更多">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
@@ -2951,6 +2958,18 @@ function recomputeCompactChildrenView(parentId, viewportW, viewportH){
   // width-fit branch, which is equivalent (nothing to scroll either way).
   var fitHeight = groupAspect > viewportAspect;
   var scale = fitHeight ? (availH/bbox.h) : (availW/bbox.w);
+  // NEVER magnify past the children's own natural (authored) size — only
+  // ever shrink an oversized group down to fit. Without this cap, a root
+  // with just a couple of small/sparse children (a natural bbox far
+  // smaller than the phone screen) computed scale far above 1x — e.g. a
+  // 200px-tall bbox stretched to fill a 700px-tall screen is a 3.5x
+  // blow-up applied as a CSS transform on the WHOLE children-layer,
+  // cascading into every nested/drilled descendant's rendered size too —
+  // exactly the reported "节点非常大,严重突出屏幕,整个屏幕只能装下半个
+  // 汉字". A too-small group instead just leaves real empty margin around
+  // it (still centered via the same transform-origin), which is the
+  // correct, expected look for a mother with very few children.
+  scale = Math.min(scale, 1);
   compactChildrenView.scale = scale;
   compactChildrenView.axis = fitHeight ? 'x' : 'y';
   compactChildrenView.groupW = bbox.w*scale;
@@ -6579,6 +6598,9 @@ function saveRailWidth(w){
    ============================================================ */
 var cbSearchEl = document.getElementById('cbSearch');
 var cbTreeEl = document.getElementById('cbTree');
+var cbNavUpEl = document.getElementById('cbNavUp');
+var cbNavDownEl = document.getElementById('cbNavDown');
+var cbNavSiblingEl = document.getElementById('cbNavSibling');
 var cbNavModeEl = document.getElementById('cbNavMode');
 var cbMoreEl = document.getElementById('cbMore');
 var compactMoreSheetEl = document.getElementById('compactMoreSheet');
@@ -6588,9 +6610,55 @@ var compactDepthMinusEl = document.getElementById('compactDepthMinus');
 var compactDepthPlusEl = document.getElementById('compactDepthPlus');
 var compactRelaxSliderEl = document.getElementById('compactRelaxSlider');
 var navModeOn = false; // "导航模式" — OFF by default, see task's own spec
+// remembers, per parent id, which child ⬆️ last stepped UP FROM — so a
+// following ⬇️ on that same parent returns to that exact child instead of
+// an arbitrary/first one — "跳转到孩子节点(如果刚执行过⬆️按钮,这次需要
+//回到之前的节点)". Cleared for a parent the moment ⬇️ actually consumes
+// it (see cbNavDownEl below), so a SECOND ⬇️ press without an intervening
+// ⬆️ falls through to the "first child" default rather than being stuck
+// re-visiting the same remembered child forever.
+var compactLastChildFrom = {};
 
 cbSearchEl.addEventListener('click', function(){ btnSearch.click(); });
 cbTreeEl.addEventListener('click', function(){ openCompactTreeSheet(); });
+cbNavUpEl.addEventListener('click', function(){
+  var curId = state.focusId;
+  var pn = parentOf(curId);
+  if(!pn) return;
+  pushUndo();
+  compactLastChildFrom[pn.id] = curId;
+  state.focusId = pn.id;
+  collapseBeyondDepth(pn.id, appParams.maxAutoDepth);
+  scheduleSave(); render();
+});
+cbNavDownEl.addEventListener('click', function(){
+  var curId = state.focusId;
+  var kids = children(curId);
+  if(!kids.length) return;
+  // prefer the child ⬆️ most recently stepped up FROM, if it's still a
+  // real direct child of the current focus — otherwise just the first one.
+  var rememberedId = compactLastChildFrom[curId];
+  var target = (rememberedId && kids.some(function(k){ return k.id===rememberedId; }))
+    ? node(rememberedId) : kids[0];
+  delete compactLastChildFrom[curId]; // consumed — a second ⬇️ press falls back to "first child"
+  pushUndo();
+  target.drilled = true;
+  state.focusId = target.id;
+  setExpandedToDepth(target.id, appParams.maxAutoDepth);
+  scheduleSave(); render();
+});
+cbNavSiblingEl.addEventListener('click', function(){
+  var curId = state.focusId;
+  var pn = parentOf(curId);
+  if(!pn || pn.children.length<2) return;
+  var idx = pn.children.indexOf(curId);
+  var nextId = pn.children[(idx+1) % pn.children.length];
+  pushUndo();
+  state.focusId = nextId;
+  collapseBeyondDepth(nextId, appParams.maxAutoDepth);
+  setExpandedToDepth(nextId, appParams.maxAutoDepth);
+  scheduleSave(); render();
+});
 cbNavModeEl.addEventListener('click', function(){
   navModeOn = !navModeOn;
   cbNavModeEl.classList.toggle('active', navModeOn);
