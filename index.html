@@ -440,9 +440,15 @@
      (buildCompactFoldBadge) relative to each node's OWN current font size
      ("几乎和文字一半大"), since that varies per node/zoom level and can't
      be expressed as a single fixed CSS size the way desktop's .mm-expand-
-     star is. This rule only sets the shape/position/color, not the size. */
+     star is. This rule only sets the shape/position/color, not the size.
+     Positioned via transform (which resolves % against the BADGE's own
+     size, not its container's) rather than top/right offsets (which
+     would resolve against the container) — translate(100%,-100%) shifts
+     it by exactly its own full width/height, landing its bottom-left
+     corner exactly on the frame's top-right corner with zero overlap —
+     "位置需要挪到文本框外侧右上角,现在是文本框内侧右上角,遮挡了文字". */
   .mm-compact-fold-badge{
-    position:absolute;top:-8px;right:-8px;border-radius:50%;
+    position:absolute;top:0;right:0;transform:translate(calc(100% + 2px),calc(-100% - 2px));border-radius:50%;
     background:var(--node-border,var(--accent));color:#fff;font-weight:700;
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;
     box-shadow:0 2px 5px rgba(0,0,0,.22);user-select:none;
@@ -499,27 +505,7 @@
   /* placeholder empty text */
   .mm-empty-ph{color:#b6bac4;}
 
-  /* ---------- style popover ---------- */
-  .pop{
-    position:fixed;background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:12px;
-    box-shadow:var(--shadow);padding:14px;z-index:2000;min-width:236px;font-size:12.5px;color:var(--text-main);
-  }
-  .pop h5{margin:0 0 8px;font-size:11px;color:var(--text-dim);font-weight:600;letter-spacing:.4px;}
-  .pop-section{margin-bottom:12px;}
-  .pop-section:last-of-type{margin-bottom:0;}
-  .pop .row{display:flex;gap:7px;margin-bottom:0;flex-wrap:wrap;align-items:center;}
-  .swatch{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;flex-shrink:0;}
-  .swatch.sel{border-color:var(--text-main);}
-  .bstyle-btn{
-    width:44px;height:28px;border-radius:7px;border:1px solid var(--panel-border);background:var(--bg);
-    cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;
-  }
-  .bstyle-btn.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
-  .bstyle-btn svg{width:36px;height:18px;}
-  .pop-lines-row{display:flex;align-items:center;gap:10px;margin-top:10px;}
-  .pop-lines-row .param-stepper{display:flex;align-items:center;gap:8px;}
-  .pop-lines-row .param-stepper span{font-size:12.5px;color:var(--text-main);font-weight:600;min-width:14px;text-align:center;}
-  .pop-lines-label{font-size:11px;color:var(--text-dim);}
+  /* ---------- style popover (removed; see #86) ---------- */
   .pop-del{
     width:100%;text-align:left;border:none;background:transparent;color:#d1495b;font-size:12px;
     padding:7px 6px;border-radius:7px;cursor:pointer;margin-top:10px;
@@ -562,10 +548,17 @@
   }
   #insertBatchBadge.show{display:block;}
   #insertDialog .id-label{font-size:11px;color:var(--text-dim);font-weight:600;margin-bottom:6px;letter-spacing:.4px;}
+  /* Summary now wraps normally (not the old single-line nowrap+
+     horizontal-scroll) and caps at ~5 lines before scrolling vertically —
+     "summary较小...最多五行以后开始滚动". max-height is derived from the
+     same font-size/line-height so a 6th line scrolls into view instead of
+     growing the dialog — that growth is exactly what used to push the
+     whole card past the viewport's own edge on a long wrapped summary —
+     "换行不能让文本框超出屏幕显示范围,电脑版测试发现会突出去". */
   #insertSummary{
     width:100%;border:1px solid var(--panel-border);border-radius:10px;padding:9px 11px;font-size:14px;
-    background:var(--bg);color:var(--text-main);outline:none;margin-bottom:12px;font-family:inherit;
-    white-space:nowrap;overflow-x:auto;
+    line-height:1.35;background:var(--bg);color:var(--text-main);outline:none;margin-bottom:12px;font-family:inherit;
+    white-space:pre-wrap;overflow-y:auto;max-height:calc(14px*1.35*5 + 18px);
   }
   #insertSummary:empty::before{content:attr(data-ph);color:#b6bac4;}
   #insertSummary:focus{border-color:var(--accent);}
@@ -576,29 +569,29 @@
   }
   #insertDetail:empty::before{content:attr(data-ph);color:#b6bac4;}
   #insertDetail:focus{border-color:var(--accent);}
-  .id-cat-row{display:flex;gap:8px;}
-  .id-cat-btn{
-    width:36px;height:30px;border-radius:8px;border:1px solid var(--panel-border);background:var(--bg);
-    color:var(--text-main);cursor:pointer;font-size:13px;font-weight:700;
+  /* the 6 visual-attribute controls (类型/线条数/熟练度/颜色/大小/边框类型)
+     as a strict 3-column x 2-row grid — every column's label sits
+     directly above its own control (cycle-button or +/- stepper) so all
+     three columns in a row share the same baseline regardless of control
+     type — "文字和按钮部分都需要严格对齐,文字中心对齐". */
+  .id-attr-grid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:14px 8px;margin-bottom:16px;
   }
-  .id-cat-btn.sel{background:var(--accent);color:#fff;border-color:var(--accent);}
-  /* ABC picker + the two importance/proficiency steppers are all wrapped
-     in an IDENTICAL .id-stat-col (label-on-top, control-below) so all
-     three columns' controls sit on the same baseline — "三个文字没有水平
-     对齐,重要度和熟练度明显更低". The ABC column's own label is a
-     non-breaking space instead of real text (kept invisible, but still
-     occupies a real text line at the same font-size/line-height as
-     "重要度"/"熟练度") purely so its control row starts from the exact
-     same y-offset as the other two, without needing a separate label
-     line for "分类" that would duplicate the id-label above this row. */
-  .id-cat-stat-row{display:flex;align-items:flex-start;gap:14px;margin-bottom:12px;flex-wrap:wrap;}
-  .id-stat-col{display:flex;flex-direction:column;align-items:center;gap:4px;}
-  .id-stat-label{font-size:10.5px;color:var(--text-dim);font-weight:600;white-space:nowrap;}
+  .id-stat-col{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .id-stat-label{font-size:10.5px;color:var(--text-dim);font-weight:600;white-space:nowrap;text-align:center;}
   .id-stat-stepper{display:flex;align-items:center;gap:6px;}
   .id-stat-stepper span{font-size:13px;color:var(--text-main);font-weight:600;min-width:14px;text-align:center;}
-  #insertDialog .id-row{display:flex;justify-content:space-between;align-items:center;}
-  #insertHintTxt{font-size:11px;color:var(--text-dim);}
-  #insertDialog .id-actions{display:flex;gap:8px;}
+  /* 类型/颜色/边框类型: a single button that cycles its own preset list on
+     each tap — same idea as 手机精致模式's own cpp-cycle-btn, reused here
+     under the desktop dialog's own naming so both surfaces share one
+     visual language without one depending on the other's CSS. */
+  .id-cycle-btn{
+    width:34px;height:34px;border-radius:9px;border:1px solid var(--panel-border);background:var(--bg);
+    color:var(--text-main);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:4px;
+  }
+  .id-cycle-btn svg{width:100%;height:100%;}
+  .id-color-swatch{width:60%;height:60%;border-radius:50%;border:2px solid;display:block;}
+  #insertDialog .id-actions{display:flex;gap:8px;justify-content:center;}
   .id-btn{border:none;border-radius:9px;padding:7px 15px;font-size:12.5px;cursor:pointer;}
   .id-btn.primary{background:var(--accent);color:#fff;}
   .id-btn.plain{background:rgba(120,130,160,.14);color:var(--text-main);}
@@ -610,15 +603,20 @@
      留给文字". Every #insertDialog child selector already defined above
      (labels/inputs/cat row/steppers/actions) keeps working unchanged
      inside this new outer shell; only #insertOverlay/#insertDialog
-     themselves are resized here. */
+     themselves are resized here. In compact mode the dialog is ALWAYS
+     full-viewport and never shrinks — "手机版长按后,这个界面永远全屏,
+     不能缩小,不能突出去,直到点击确定or取消退出" — while Summary/Detail
+     keep their own independent scroll so long text never grows the
+     dialog itself past the viewport either.
+     */
   html.mobile-compact-mode #insertOverlay{background:var(--bg);align-items:stretch;justify-content:stretch;}
   html.mobile-compact-mode #insertDialog{
-    width:100%;height:100%;border-radius:0;box-shadow:none;
+    width:100%;height:100dvh;border-radius:0;box-shadow:none;
     padding:clamp(10px,3vw,14px);display:flex;flex-direction:column;overflow-y:auto;
   }
-  html.mobile-compact-mode #insertSummary{margin-bottom:8px;}
+  html.mobile-compact-mode #insertSummary{margin-bottom:8px;max-height:30vh;}
   html.mobile-compact-mode #insertDetail{flex:1;min-height:0;margin-bottom:8px;}
-  html.mobile-compact-mode .id-cat-stat-row{margin-bottom:8px;}
+  html.mobile-compact-mode .id-attr-grid{margin-bottom:8px;}
 
   /* ---------- mobile mode: bottom nav bar + bottom-sheet flyouts ----------
      Everything below is gated under html.mobile-mode (toggled by
@@ -769,6 +767,19 @@
   }
   .compact-btn svg{width:55%;height:55%;}
   .compact-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  /* ⬆️/⬇️ stacked vertically in the SAME footprint one .compact-btn would
+     take — "⬆️和⬇️按钮要垂直叠起来,更符合直观" (up-then-down reads more
+     naturally as a single 2-row control than two side-by-side buttons). */
+  .compact-btn-stack{
+    display:flex;flex-direction:column;flex-shrink:0;gap:2px;
+    width:clamp(34px,10vw,46px);height:clamp(34px,10vw,46px);
+  }
+  .compact-btn-half{
+    flex:1;display:flex;align-items:center;justify-content:center;
+    border-radius:clamp(6px,1.6vw,9px);border:1px solid var(--panel-border);
+    background:var(--bg);color:var(--text-main);cursor:pointer;
+    font-size:clamp(10px,2.8vw,13px);padding:0;
+  }
   /* random-pick buttons render into here (see renderCompactRandomZone) —
      each one is its OWN first-class button, same footprint as any other
      compact-btn, laid out in a horizontally-scrollable strip so an
@@ -802,12 +813,12 @@
   }
   #compactDepthCtl > div + div{border-left:1px solid var(--panel-border);}
   #compactDepthCtl > div.pressed{background:rgba(120,130,160,.18);}
-  /* row2: depth control + random-button strip + the "仅居中" button
-     (reusing btnCenterVisibleChildren's own click behavior, moved to the
-     end of this row per "把那个按钮的功能放到第二行最右边" — see the JS
-     wiring for cbCenterVisibleChildren) — random-button strip is flex:1
-     so however many custom buttons exist, the fixed-width depth control
-     and center button on either side never get squeezed off-screen. */
+  /* row2: depth control + drag-toggle + random-button strip + the "局部
+     重排" button (reusing btnResetVisibleSizes' own click behavior, moved
+     to the end of this row per "第二排最后一个不要target(居中显示),而是
+     要第一个reset" — see the JS wiring for cbResetVisibleSizes) —
+     random-button strip is flex:1 so however many custom buttons exist,
+     the fixed-width controls on either side never get squeezed off-screen. */
   #compactBarRow2{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactBarRow3{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactRelaxLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
@@ -886,32 +897,7 @@
      gets no ring regardless of drilled state. */
   .ctv-row.ctv-collapsed{box-shadow:inset 0 0 0 1.5px var(--panel-border);}
 
-  /* long-press property panel — "长按展开节点属性编辑,把四个可视化属性
-     全都加进去,包括边框的类型,数量,节点的大小和颜色...所有按钮对齐尽量
-     精简". A single 2x2 grid, one column per attribute, each column's
-     label sits directly above its own control so all four controls line
-     up on the same row regardless of whether that column is a cycle
-     button or a +/- stepper. */
-  #compactPropertyPanel{
-    position:fixed;left:0;right:0;bottom:0;z-index:1200;
-    display:flex;flex-direction:column;gap:clamp(8px,2.4vw,12px);
-    padding:clamp(10px,3vw,14px);padding-bottom:calc(clamp(10px,3vw,14px) + env(safe-area-inset-bottom, 0px));
-    background:var(--panel-bg);border-top:1px solid var(--panel-border);
-    border-radius:14px 14px 0 0;box-shadow:var(--shadow);
-  }
-  .cpp-grid{display:flex;justify-content:space-around;gap:clamp(6px,2vw,10px);}
-  .cpp-stat-col{display:flex;flex-direction:column;align-items:center;gap:6px;}
-  .cpp-stat-label{font-size:clamp(10.5px,2.6vw,12.5px);color:var(--text-dim);font-weight:600;white-space:nowrap;}
-  .cpp-stepper{display:flex;align-items:center;gap:6px;}
-  .cpp-stepper span{font-size:clamp(12px,3vw,14px);color:var(--text-main);font-weight:600;min-width:2.6em;text-align:center;}
-  .cpp-cycle-btn{
-    width:clamp(34px,9vw,42px);height:clamp(34px,9vw,42px);border-radius:10px;
-    border:1px solid var(--panel-border);background:var(--bg);cursor:pointer;
-    display:flex;align-items:center;justify-content:center;color:var(--text-main);
-    padding:4px;
-  }
-  .cpp-cycle-btn svg{width:100%;height:100%;}
-  .cpp-color-swatch{width:60%;height:60%;border-radius:50%;border:2px solid;display:block;}
+
   .compact-action-btn{
     padding:clamp(11px,3.2vw,14px);border-radius:10px;border:none;background:transparent;
     color:var(--text-main);font-size:clamp(13px,3.4vw,15px);text-align:center;cursor:pointer;
@@ -988,8 +974,10 @@
       <button class="compact-btn" id="cbTree" title="树状视图">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
       </button>
-      <button class="compact-btn" id="cbNavUp" title="跳转到根节点">⬆️</button>
-      <button class="compact-btn" id="cbNavDown" title="跳转到此节点（之前的子节点）">⬇️</button>
+      <div class="compact-btn-stack" id="cbNavUpDownStack">
+        <button class="compact-btn-half" id="cbNavUp" title="跳转到根节点">⬆️</button>
+        <button class="compact-btn-half" id="cbNavDown" title="跳转到此节点（之前的子节点）">⬇️</button>
+      </div>
       <button class="compact-btn" id="cbNavSibling" title="循环跳转兄弟节点">➡️</button>
       <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
       <button class="compact-btn" id="cbAddToInbox" title="新建节点到 1 号收纳节点">✳️</button>
@@ -1003,8 +991,9 @@
         <div id="compactDepthValue">2</div>
         <div id="compactDepthPlus">›</div>
       </div>
+      <button class="compact-btn" id="cbDragToggle" title="拖拽平移：开启后可拖动一级子节点">✋</button>
       <div id="compactRandomZone"></div>
-      <button class="compact-btn" id="cbCenterVisibleChildren" title="把当前可见区域根节点的一级孩子整体平移到居中位置">🎯</button>
+      <button class="compact-btn" id="cbResetVisibleSizes" title="重置当前可见区域一级子节点的位置、大小和相对排版">⭕️</button>
     </div>
     <div id="compactBarRow3">
       <span id="compactRelaxLabel">防碰撞强度</span>
@@ -1020,7 +1009,6 @@
       <button class="compact-more-btn" id="cbMoreImport">🚢<br>导入 JSON</button>
       <button class="compact-more-btn" id="cbMoreExport">🚁<br>导出 JSON</button>
       <button class="compact-more-btn" id="cbMoreFit">⛩<br>回到全局</button>
-      <button class="compact-more-btn" id="cbMoreResetVisible">⭕️<br>局部重排</button>
       <button class="compact-more-btn" id="cbMoreResetAll">💣<br>全树重排</button>
       <button class="compact-more-btn" id="cbMoreDesktop">🖥<br>返回电脑模式</button>
       <button class="compact-more-btn" id="cbMoreRaw">📱<br>手机原始模式</button>
@@ -1128,18 +1116,13 @@
     <div id="insertSummary" contenteditable="true" data-ph="节点摘要…"></div>
     <div class="id-label">Detail</div>
     <div id="insertDetail" contenteditable="true" data-ph="节点详情…"></div>
-    <div class="id-label">分类</div>
-    <div class="id-cat-stat-row">
+    <div class="id-attr-grid">
       <div class="id-stat-col">
-        <span class="id-stat-label">&nbsp;</span>
-        <div class="id-cat-row" id="insertCatRow">
-          <button class="id-cat-btn" data-cat="A">A</button>
-          <button class="id-cat-btn" data-cat="B">B</button>
-          <button class="id-cat-btn" data-cat="C">C</button>
-        </div>
+        <span class="id-stat-label">类型</span>
+        <button class="id-cycle-btn" id="insertCatTypeBtn"></button>
       </div>
       <div class="id-stat-col">
-        <span class="id-stat-label">重要度</span>
+        <span class="id-stat-label">线条数</span>
         <div class="id-stat-stepper" id="insertBorderLinesStepper">
           <button class="mini-btn" data-dir="-1">－</button>
           <span id="insertBorderLinesValue">1</span>
@@ -1154,13 +1137,26 @@
           <button class="mini-btn" data-dir="1">＋</button>
         </div>
       </div>
-    </div>
-    <div class="id-row">
-      <span id="insertHintTxt"></span>
-      <div class="id-actions">
-        <button class="id-btn plain" id="insertCancelBtn">取消</button>
-        <button class="id-btn primary" id="insertOkBtn">确定</button>
+      <div class="id-stat-col">
+        <span class="id-stat-label">颜色</span>
+        <button class="id-cycle-btn" id="insertColorBtn"></button>
       </div>
+      <div class="id-stat-col">
+        <span class="id-stat-label">大小</span>
+        <div class="id-stat-stepper" id="insertSizeStepper">
+          <button class="mini-btn" data-dir="-1">－</button>
+          <span id="insertSizeValue">1.00×</span>
+          <button class="mini-btn" data-dir="1">＋</button>
+        </div>
+      </div>
+      <div class="id-stat-col">
+        <span class="id-stat-label">边框类型</span>
+        <button class="id-cycle-btn" id="insertBorderStyleBtn"></button>
+      </div>
+    </div>
+    <div class="id-actions" id="insertActionsRow">
+      <button class="id-btn plain" id="insertCancelBtn">取消</button>
+      <button class="id-btn primary" id="insertOkBtn">确定</button>
     </div>
   </div>
 </div>
@@ -1280,6 +1276,13 @@ var MASTER_LEVEL_MIN = 1, MASTER_LEVEL_MAX = 5, MASTER_LEVEL_DEFAULT = 3;
 var BASE_FONT = 30;        // baseline font size at sizeLevel=5 (default) — ~2x the old 14.5px
 var BASE_DIAM = 190;       // baseline circular diameter at sizeLevel=5 — ~2x the old 92px
 var CONTENT_PAD = 0.80;    // fraction of frame usable for text content
+// 手机精致模式 ONLY: hard caps on how many lines a node's own summary/
+// detail may wrap into before the rest is replaced with an ellipsis —
+// "summary如果太长,也用省略号代替,因为不能因为一个节点就把其他节点挤到
+// 看不见或者屏幕以外". Desktop/手机原始模式 keep wrapText's original
+// unbounded behavior untouched (no maxLines argument passed there).
+var COMPACT_SUMMARY_MAX_LINES = 3;
+var COMPACT_DETAIL_MAX_LINES = 4;
 
 /* random-pick ("随机选一") panel: weighting formula, expressed as plain JS
    so the user can rewrite it from the panel itself. Inputs: importance
@@ -1292,6 +1295,14 @@ var CONTENT_PAD = 0.80;    // fraction of frame usable for text content
    文本就能支持"). */
 var DEFAULT_RANDOM_FORMULA = 'importance * (6 - masterLevel) + (masterLevel < 2 ? 20 : 0)';
 
+/* escapes a plain-text string for safe insertion as HTML — used only when
+   rendering wrapText's own plain-text sLines/dLines (手机精致模式's
+   ellipsis-truncated node content, see buildNodeContent), never for the
+   node's own real rich-text summary/detail (sanitizeRich already governs
+   what markup is allowed there). */
+function escapeHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 var sanitizeScratch = document.createElement('div');
 function sanitizeRich(html){
   sanitizeScratch.innerHTML = html;
@@ -1891,7 +1902,7 @@ var FONT_STACK = '-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","
 function tokenize(text){
   return text.match(/[一-鿿　-〿＀-￯]|[^\s一-鿿　-〿＀-￯]+|\s+/g) || [];
 }
-function wrapText(text, maxWidth, fontPx){
+function wrapText(text, maxWidth, fontPx, maxLines){
   mCtx.font = fontPx+'px '+FONT_STACK;
   var tokens = tokenize(text);
   var lines=[], cur='', curW=0;
@@ -1918,6 +1929,23 @@ function wrapText(text, maxWidth, fontPx){
   });
   if(cur) lines.push(cur);
   if(!lines.length) lines=[''];
+  // 手机精致模式 ONLY (see maxLines' own callers — desktop/手机原始模式
+  // never pass this argument, so this block is always skipped there):
+  // hard-truncate to maxLines, ellipsis-shortening the LAST kept line
+  // (character-by-character, since a word-boundary truncation could still
+  // overflow maxWidth) so the node's own height formula (line count ×
+  // lineHeight) can never grow past this cap — "detail展开的时候...看见的
+  //字体要适当缩小...除非detail太长,则用省略号". The line's own natural
+  // wrapped width already fits maxWidth, so shrinking it by trimming
+  // characters from the end can only ever shrink its measured width too.
+  if(maxLines && lines.length>maxLines){
+    lines = lines.slice(0, maxLines);
+    var last = lines[maxLines-1];
+    while(last.length>0 && mCtx.measureText(last+'…').width>maxWidth){
+      last = last.slice(0, -1);
+    }
+    lines[maxLines-1] = last+'…';
+  }
   var maxW=0;
   lines.forEach(function(l){ var w=mCtx.measureText(l).width; if(w>maxW) maxW=w; });
   return {lines:lines, maxW:maxW};
@@ -1980,6 +2008,15 @@ function fontSizeFor(n){
    squashed into its final aspect ratio. */
 function computeNodeBox(n, ignoreCrowd){
   var fontPx = fontSizeFor(n);
+  var summary = richToPlain(n.summary || '');
+  var showDetail = effectiveVis(n)>=2 && richToPlain(n.detail||'').length>0;
+  // 手机精致模式 ONLY: shrink the font a bit whenever detail is actually
+  // showing, so split-mode's fixed maxTotalW/line-count cap (see below)
+  // has more ROOM before COMPACT_SUMMARY/DETAIL_MAX_LINES forces an
+  // ellipsis — "当展开detail时,看见的字体要适当缩小,配合detail显示".
+  // Desktop/手机原始模式 keep the exact same fontSizeFor(n) value used
+  // everywhere else (chip label, tree view, etc.), completely unaffected.
+  if(showDetail && isCompactMode()) fontPx *= 0.85;
   var lineH = fontPx*1.28;
   var isoScale = scalarScaleFor(n);
   var stretchX = isoScale>0 ? scaleXFor(n)/isoScale : 1;
@@ -1994,8 +2031,6 @@ function computeNodeBox(n, ignoreCrowd){
   // 变小...请确保碰撞机制永远只在直系兄弟之间有效,不能跨越母节点影响母
   // 节点的兄弟节点,以及关系更远的节点".
   var baseD = BASE_DIAM * isoScale * autoFitScale * (ignoreCrowd ? 1 : crowdScaleFor(n));
-  var summary = richToPlain(n.summary || '');
-  var showDetail = effectiveVis(n)>=2 && richToPlain(n.detail||'').length>0;
 
   var box;
   if(!showDetail){
@@ -2015,7 +2050,7 @@ function computeNodeBox(n, ignoreCrowd){
           box = {w:w2, h:h2, shape:'ellipse', fontPx:fontPx, mode:'summary', sLines:[summary]};
         } else {
           var maxRectW = baseD*2.6;
-          var wrap = wrapText(summary, maxRectW, fontPx);
+          var wrap = wrapText(summary, maxRectW, fontPx, isCompactMode() ? COMPACT_SUMMARY_MAX_LINES : undefined);
           var w3 = Math.max(baseD, wrap.maxW*1.12/CONTENT_PAD);
           var h3 = Math.max(baseD*0.6, (wrap.lines.length*lineH*1.15)/CONTENT_PAD);
           box = {w:w3, h:h3, shape:'rect', fontPx:fontPx, mode:'summary', sLines:wrap.lines};
@@ -2042,8 +2077,8 @@ function computeNodeBox(n, ignoreCrowd){
     // if either side's natural width already fits within its column, don't
     // wrap it further than necessary — but wrapText handles that naturally
     // since a natural width <= column width produces exactly one line.
-    var sWrap = wrapText(summary, Math.max(sColW, sNatural+2)/CONTENT_PAD, fontPx);
-    var dWrap = wrapText(detail, dColW/CONTENT_PAD, fontPx*0.94);
+    var sWrap = wrapText(summary, Math.max(sColW, sNatural+2)/CONTENT_PAD, fontPx, isCompactMode() ? COMPACT_SUMMARY_MAX_LINES : undefined);
+    var dWrap = wrapText(detail, dColW/CONTENT_PAD, fontPx*0.94, isCompactMode() ? COMPACT_DETAIL_MAX_LINES : undefined);
     // if summary fits on one line by itself, don't let it get squeezed
     // narrower than its own natural width just to match a proportional share
     if(sWrap.lines.length===1) sColW = Math.max(sColW, sNatural*1.08);
@@ -3097,6 +3132,23 @@ function clampCamera(){
    ITSELF changes value, never when the root's content-driven size merely
    changes underneath the same focusId. */
 function resyncRootView(){
+  // 手机精致模式 never uses fitCameraToRoot/clampCamera's desktop-oriented
+  // "fit the root's own natural box to the viewport" math — camera.scale
+  // is permanently locked to 1 there (see render()'s own isCompactMode
+  // branch). Calling fitCameraToRoot unconditionally here (as every OTHER
+  // caller of resyncRootView expects) briefly overrode that lock with
+  // whatever scale the abstract root box happened to compute against the
+  // viewport, producing a visible flash-tiny-then-snap-back-on-next-render
+  // glitch every time a fold/collapse toggle called this — "单击...折叠
+  // 展开之后的瞬间,视图会变得非常微缩,直到手触摸一下屏幕才会恢复正常".
+  if(isCompactMode()){
+    camera.scale = 1;
+    var cvis = visibleCanvasRect(), cfull = canvasWrap.getBoundingClientRect();
+    camera.x = (cvis.left - cfull.left) + cvis.width/2;
+    camera.y = (cvis.top - cfull.top) + cvis.height/2;
+    applyCamera();
+    return;
+  }
   fitCameraToRoot();
   clampCamera();
   applyCamera();
@@ -3201,7 +3253,6 @@ function buildContainerTree(n, isRoot){
       chip.classList.add('mm-chip-hidden');
     }
     chip.addEventListener('mousedown', function(ev){ nodeMousedown(ev, null, n); });
-    chip.addEventListener('contextmenu', function(ev){ ev.preventDefault(); ev.stopPropagation(); openStylePopover(ev.clientX, ev.clientY, n); });
     if(!compactRootMode) inner.appendChild(chip); // compact root's own "文字居中显示" comes from #compactRootLabel instead (see render()) — the normal chip bubble would duplicate it
 
     var natBox = {w:natW, h:natH, shape:box.shape};
@@ -3380,12 +3431,11 @@ function buildExpandStar(n){
 function buildCompactFoldBadge(n){
   var badge = document.createElement('div');
   badge.className = 'mm-compact-fold-badge';
-  // "几乎和文字一半大" — sized off this node's OWN current rendered font
-  // size (fontSizeFor already folds in globalFontScale/camera zoom/crowd-
-  // shrink), not a fixed px value, so the badge stays proportionate at
-  // every zoom level and node size instead of looking tiny on a large
-  // node or oversized on a small one.
-  var d = Math.max(16, fontSizeFor(n)*1.7);
+  // "大小缩小一半" — half the previous fontSizeFor(n)*1.7 sizing (and
+  // half the old 16px floor), still proportionate to the node's own
+  // current font size at every zoom level per "几乎和文字一半大" (that
+  // ratio itself is unchanged — only the absolute size is now halved).
+  var d = Math.max(8, fontSizeFor(n)*0.85);
   badge.style.width = d+'px';
   badge.style.height = d+'px';
   badge.style.fontSize = (d*0.52)+'px';
@@ -3459,6 +3509,23 @@ function buildNodeContent(n, box){
   // from box.w and box.h, sidesteps that entirely.
   var padX = box.w*(1-CONTENT_PAD)/2, padY = box.h*(1-CONTENT_PAD)/2;
   wrap.style.padding = padY+'px '+padX+'px';
+  // 手机精致模式 ONLY: render the box's own already-wrapped-and-ellipsis-
+  // truncated plain-text lines (box.sLines/dLines, computed by
+  // computeNodeBox -> wrapText with COMPACT_SUMMARY/DETAIL_MAX_LINES)
+  // instead of the raw rich-text HTML — otherwise the box shrinks to fit
+  // the truncated line count (fixing the overflow) but the untruncated
+  // real text keeps rendering underneath, just silently clipped by
+  // overflow:hidden with no visible "…" — "summary如果太长,也用省略号
+  // 代替". Desktop/手机原始模式 render n.summary/n.detail's real rich HTML
+  // completely unchanged (box.sLines/dLines exist there too but are
+  // ignored, same as before this fix). escapeHtml is needed since
+  // wrapText's lines are PLAIN text (richToPlain already stripped tags),
+  // so joining them with <br> must not let a literal "<"/"&" in the
+  // user's own text get reinterpreted as markup.
+  var compact = isCompactMode();
+  function linesHtml(lines){
+    return lines.map(escapeHtml).join('<br>');
+  }
   if(box.mode==='split'){
     var split = document.createElement('div');
     split.className='mm-split';
@@ -3466,13 +3533,15 @@ function buildNodeContent(n, box){
     sEl.className='mm-summary';
     sEl.style.width = box.sColW+'px';
     sEl.style.fontSize = box.fontPx+'px';
-    sEl.innerHTML = n.summary||'';
+    if(compact){ sEl.innerHTML = linesHtml(box.sLines); sEl.style.whiteSpace = box.sLines.length>1 ? 'normal' : 'nowrap'; }
+    else sEl.innerHTML = n.summary||'';
     var div = document.createElement('div');
     div.className='mm-divider';
     var dEl = document.createElement('div');
     dEl.className='mm-detail';
     dEl.style.fontSize=(box.fontPx*0.94)+'px';
-    dEl.innerHTML = n.detail||'';
+    if(compact) dEl.innerHTML = linesHtml(box.dLines);
+    else dEl.innerHTML = n.detail||'';
     split.appendChild(sEl); split.appendChild(div); split.appendChild(dEl);
     wrap.appendChild(split);
   } else {
@@ -3480,6 +3549,7 @@ function buildNodeContent(n, box){
     only.className='mm-summary-only';
     only.style.fontSize = box.fontPx+'px';
     if(!n.summary){ only.classList.add('mm-empty-ph'); only.textContent='(空)'; }
+    else if(compact && box.sLines) only.innerHTML = linesHtml(box.sLines);
     else only.innerHTML = n.summary;
     wrap.appendChild(only);
   }
@@ -3490,7 +3560,7 @@ function buildNodeContent(n, box){
    node interaction: click/dblclick/drag/cmd-click/option-click/contextmenu
    ============================================================ */
 function nodeMousedown(ev, el, n){
-  if(ev.target.closest('.pop') || ev.target.closest('.mm-expand-star')) return;
+  if(ev.target.closest('.mm-expand-star')) return;
   ev.stopPropagation();
   // 手机精致模式 has its own, completely separate touch-gesture vocabulary
   // (tap/double-tap/long-press/drag-axis all mean different things than
@@ -3510,6 +3580,15 @@ function nodeMousedown(ev, el, n){
     // gesture canvasWrap's own mousedown listener is supposed to run.
     if(n.id===state.focusId){
       startCompactGroupPan(ev);
+      return;
+    }
+    // "激活以后节点位置可以被拖拽...每个一级子节点都视为一个单独的对象,
+    // 可以被拖拽,母节点和二级子节点不可操控" — while armed, ONLY a direct
+    // child of the current focus root starts a drag; the root itself keeps
+    // panning (above) and any deeper descendant falls through to the
+    // normal tap/long-press vocabulary untouched.
+    if(compactDragModeOn && n.parentId===state.focusId){
+      startNodeDrag(ev, el, n);
       return;
     }
     compactNodeMousedown(ev, el, n);
@@ -3613,10 +3692,6 @@ function nodeMousedown(ev, el, n){
 }
 function attachNodeEvents(el, n){
   el.addEventListener('mousedown', function(ev){ nodeMousedown(ev, el, n); });
-  el.addEventListener('contextmenu', function(ev){
-    ev.preventDefault(); ev.stopPropagation();
-    openStylePopover(ev.clientX, ev.clientY, n);
-  });
 }
 
 function startNodeDrag(ev, el, n){
@@ -3654,11 +3729,11 @@ function startNodeDrag(ev, el, n){
 
 /* ============================================================
    手机精致模式: touch-gesture engine for canvas nodes — single unified
-   vocabulary (no more navModeOn split, no more drag-to-adjust gestures):
+   vocabulary:
      - tap a leaf (or a collapsed branch)  -> cycle visibility (hidden/summary/detail)
      - tap a branch (children shown)       -> batch-cycle visibility of whole subtree
      - double-tap                          -> become focus root (like desktop Shift+Enter)
-     - long-press                          -> compactPropertyPanel (border style/lines, size, color — see its own comment)
+     - long-press                          -> the unified insert/edit dialog (openInsertDialog, mode:'edit') — same full Summary/Detail/分类/6-attribute panel desktop's Option+click opens, not a separate compact-only panel — "这个【文本基本信息编辑框】本身应该是长按任何节点触发的"
    pinch (2-finger) on blank canvas -> go up one level (like desktop Shift+Up).
    ============================================================ */
 var LONG_PRESS_MS = 480;
@@ -3669,7 +3744,7 @@ function compactNodeMousedown(ev, el, n){
   function clearLongPress(){ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; } }
   longPressTimer = setTimeout(function(){
     longPressFired = true;
-    openCompactPropertyPanel(n);
+    openInsertDialog({mode:'edit', node:n});
   }, LONG_PRESS_MS);
 
   function onMove(e){
@@ -3684,7 +3759,7 @@ function compactNodeMousedown(ev, el, n){
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     clearLongPress();
-    if(longPressFired || moved) return; // openCompactPropertyPanel already took over, or this was just an accidental finger slide, not a tap
+    if(longPressFired || moved) return; // openInsertDialog already took over, or this was just an accidental finger slide, not a tap
     compactNodeTap(n, ev);
   }
   window.addEventListener('mousemove', onMove);
@@ -3698,8 +3773,7 @@ function compactIsBranch(n){
 }
 function compactNodeTap(n, ev){
   if(isDoubleClick('compact:'+n.id, ev)){
-    // 双击：设为可见区域根节点，等价 shift+enter — one unconditional
-    // behavior now, not gated behind navModeOn.
+    // 双击：设为可见区域根节点，等价 shift+enter
     pushUndo();
     n.drilled = true;
     state.focusId = n.id;
@@ -3736,103 +3810,7 @@ function compactNodeTap(n, ev){
   triggerGlow();
   render();
 }
-/* long-press property panel: the four VISUAL attributes a node has, all
-   in one compact grid instead of the old drag-to-adjust gestures —
-   "长按展开节点属性编辑，把四个可视化属性全都加进去，包括边框的类型，
-   数量，节点的大小和颜色". 边框类型/颜色 are single buttons that cycle
-   through their preset list on each tap (same presets/order the desktop
-   style-popover already uses — COLOR_PRESETS/BORDER_STYLES); 节点大小/
-   边框数量 are +/- steppers, matching the same visual language the
-   insert/edit dialog's own importance/proficiency steppers already use
-   (.id-stat-col/.id-stat-stepper) — "所有按钮对齐尽量精简". Rebuilt on
-   every single change (rather than patching the DOM in place) since the
-   whole panel is cheap and this keeps every displayed value trivially
-   in sync with the node's current state. */
-var compactPropertyPanelEl = null;
-function closeCompactPropertyPanel(){
-  if(compactPropertyPanelEl){ compactPropertyPanelEl.remove(); compactPropertyPanelEl = null; }
-}
-function openCompactPropertyPanel(n){
-  closeCompactPropertyPanel();
-  var panel = document.createElement('div');
-  panel.id = 'compactPropertyPanel';
 
-  function statCol(label, valueText, onMinus, onPlus){
-    var col = document.createElement('div');
-    col.className = 'cpp-stat-col';
-    var lab = document.createElement('span'); lab.className = 'cpp-stat-label'; lab.textContent = label;
-    var stepper = document.createElement('div'); stepper.className = 'cpp-stepper';
-    var minus = document.createElement('button'); minus.className = 'mini-btn'; minus.textContent = '－';
-    var val = document.createElement('span'); val.textContent = valueText;
-    var plus = document.createElement('button'); plus.className = 'mini-btn'; plus.textContent = '＋';
-    minus.addEventListener('click', function(ev){ ev.stopPropagation(); onMinus(); openCompactPropertyPanel(n); });
-    plus.addEventListener('click', function(ev){ ev.stopPropagation(); onPlus(); openCompactPropertyPanel(n); });
-    stepper.appendChild(minus); stepper.appendChild(val); stepper.appendChild(plus);
-    col.appendChild(lab); col.appendChild(stepper);
-    return col;
-  }
-  function cycleCol(label, previewHtml, onCycle){
-    var col = document.createElement('div');
-    col.className = 'cpp-stat-col';
-    var lab = document.createElement('span'); lab.className = 'cpp-stat-label'; lab.textContent = label;
-    var btn = document.createElement('button'); btn.className = 'cpp-cycle-btn';
-    btn.innerHTML = previewHtml;
-    btn.addEventListener('click', function(ev){ ev.stopPropagation(); onCycle(); openCompactPropertyPanel(n); });
-    col.appendChild(lab); col.appendChild(btn);
-    return col;
-  }
-
-  var grid = document.createElement('div');
-  grid.className = 'cpp-grid';
-  grid.appendChild(cycleCol('颜色', (function(){
-    var preset = COLOR_PRESETS[n.color % COLOR_PRESETS.length];
-    var sw = isDarkTheme() ? preset.fillD : preset.fillL;
-    var bd = isDarkTheme() ? preset.borderD : preset.borderL;
-    return '<span class="cpp-color-swatch" style="background:'+sw+';border-color:'+bd+';"></span>';
-  })(), function(){
-    pushUndo();
-    n.color = (n.color+1) % COLOR_PRESETS.length;
-    scheduleSave(); render();
-  }));
-  grid.appendChild(cycleCol('边框类型', borderPreviewSvg(n.border), function(){
-    pushUndo();
-    var idx = BORDER_STYLES.indexOf(n.border);
-    n.border = BORDER_STYLES[(idx+1) % BORDER_STYLES.length];
-    scheduleSave(); render();
-  }));
-  grid.appendChild(statCol('边框数量', n.borderLines||1, function(){
-    pushUndo();
-    n.borderLines = clamp((n.borderLines||1)-1, BORDER_LINES_MIN, BORDER_LINES_MAX);
-    propagateStatDown(n.id, 'borderLines', n.borderLines);
-    scheduleSave(); render();
-  }, function(){
-    pushUndo();
-    n.borderLines = clamp((n.borderLines||1)+1, BORDER_LINES_MIN, BORDER_LINES_MAX);
-    propagateStatDown(n.id, 'borderLines', n.borderLines);
-    scheduleSave(); render();
-  }));
-  grid.appendChild(statCol('大小', scalarScaleFor(n).toFixed(2)+'×', function(){
-    pushUndo();
-    if(n.drilled){ n.scaleXKids*=0.9; n.scaleYKids*=0.9; } else { n.scaleXNoKids*=0.9; n.scaleYNoKids*=0.9; }
-    scheduleSave(); render();
-  }, function(){
-    pushUndo();
-    if(n.drilled){ n.scaleXKids*=1.1; n.scaleYKids*=1.1; } else { n.scaleXNoKids*=1.1; n.scaleYNoKids*=1.1; }
-    scheduleSave(); render();
-  }));
-  panel.appendChild(grid);
-
-  var close = document.createElement('button');
-  close.className = 'compact-action-btn compact-action-cancel';
-  close.textContent = '完成';
-  close.addEventListener('click', closeCompactPropertyPanel);
-  panel.appendChild(close);
-
-  document.body.appendChild(panel);
-  compactPropertyPanelEl = panel;
-  setTimeout(function(){ document.addEventListener('mousedown', closePropertyPanelOnce, {capture:true}); }, 0);
-}
-function closePropertyPanelOnce(e){ if(!e.target.closest('#compactPropertyPanel')) closeCompactPropertyPanel(); }
 
 /* ============================================================
    style popover (color + border)
@@ -3845,129 +3823,74 @@ function borderPreviewSvg(style){
   else d='<path d="M2 9 Q8 1 14 9 T26 9 T38 9" stroke="currentColor" stroke-width="2.4" fill="none"/>';
   return '<svg viewBox="0 0 36 18">'+d+'</svg>';
 }
-var BORDER_STYLE_LABELS = {solid:'实线', dashed:'虚线', 'wave-thin':'细波浪', 'wave-thick':'大波浪'};
-function openStylePopover(x, y, n){
-  closePopover();
-  var pop = document.createElement('div');
-  pop.className='pop';
-  pop.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
-
-  var sec1 = document.createElement('div'); sec1.className='pop-section';
-  var h1 = document.createElement('h5'); h1.textContent='颜色';
-  sec1.appendChild(h1);
-  var row1 = document.createElement('div'); row1.className='row';
-  COLOR_PRESETS.forEach(function(preset, i){
-    var sw = document.createElement('div');
-    sw.className='swatch'+(n.color===i?' sel':'');
-    sw.style.background = isDarkTheme()?preset.fillD:preset.fillL;
-    sw.style.borderColor = isDarkTheme()?preset.borderD:preset.borderL;
-    sw.style.boxShadow = 'inset 0 0 0 2px '+(isDarkTheme()?preset.borderD:preset.borderL);
-    sw.title = preset.name;
-    sw.addEventListener('click', function(){ pushUndo(); n.color=i; scheduleSave(); render(); openStylePopover(x,y,n); });
-    row1.appendChild(sw);
-  });
-  sec1.appendChild(row1);
-  pop.appendChild(sec1);
-
-  var sec2 = document.createElement('div'); sec2.className='pop-section';
-  var h2 = document.createElement('h5'); h2.textContent='边框';
-  sec2.appendChild(h2);
-  var row2 = document.createElement('div'); row2.className='row';
-  BORDER_STYLES.forEach(function(style){
-    var b = document.createElement('div');
-    b.className='bstyle-btn'+(n.border===style?' sel':'');
-    b.innerHTML = borderPreviewSvg(style);
-    b.title = BORDER_STYLE_LABELS[style]||style;
-    b.addEventListener('click', function(){ pushUndo(); n.border=style; scheduleSave(); render(); openStylePopover(x,y,n); });
-    row2.appendChild(b);
-  });
-  sec2.appendChild(row2);
-
-  var linesRow = document.createElement('div'); linesRow.className='pop-lines-row';
-  var linesLabel = document.createElement('span'); linesLabel.className='pop-lines-label'; linesLabel.textContent='线条数';
-  var stepper = document.createElement('div'); stepper.className='param-stepper';
-  var minus = document.createElement('button'); minus.className='mini-btn'; minus.textContent='－';
-  var countEl = document.createElement('span'); countEl.textContent = n.borderLines||1;
-  var plus = document.createElement('button'); plus.className='mini-btn'; plus.textContent='＋';
-  minus.addEventListener('click', function(){
-    pushUndo(); n.borderLines = clamp((n.borderLines||1)-1, BORDER_LINES_MIN, BORDER_LINES_MAX);
-    propagateStatDown(n.id, 'borderLines', n.borderLines);
-    scheduleSave(); render(); openStylePopover(x,y,n);
-  });
-  plus.addEventListener('click', function(){
-    pushUndo(); n.borderLines = clamp((n.borderLines||1)+1, BORDER_LINES_MIN, BORDER_LINES_MAX);
-    propagateStatDown(n.id, 'borderLines', n.borderLines);
-    scheduleSave(); render(); openStylePopover(x,y,n);
-  });
-  stepper.appendChild(minus); stepper.appendChild(countEl); stepper.appendChild(plus);
-  linesRow.appendChild(linesLabel); linesRow.appendChild(stepper);
-  sec2.appendChild(linesRow);
-  pop.appendChild(sec2);
-
-  document.body.appendChild(pop);
-  var pr = pop.getBoundingClientRect();
-  var px = Math.min(x, window.innerWidth-pr.width-10);
-  var py = Math.min(y, window.innerHeight-pr.height-10);
-  pop.style.left = px+'px'; pop.style.top = py+'px';
-  setTimeout(function(){ document.addEventListener('mousedown', closePopoverOnce, {capture:true}); },0);
-}
-function closePopoverOnce(e){ if(!e.target.closest('.pop')) closePopover(); }
-function closePopover(){
-  document.querySelectorAll('.pop').forEach(function(p){ p.remove(); });
-  document.removeEventListener('mousedown', closePopoverOnce, {capture:true});
-}
 
 /* ============================================================
-   insert dialog (single + batch)
+   insert dialog (single + batch) — now the ONE unified property editor
+   for both create and edit modes, reachable from long-press (compact
+   mode) / Option+click (desktop) alike: Summary/Detail/分类/类型/线条数/
+   熟练度/颜色/大小/边框类型, all in one place — "长按展开的东西...没有上面
+   的summary detail category了...要加回来".
    ============================================================ */
 var insertOverlay = document.getElementById('insertOverlay');
 var insertDialog = document.getElementById('insertDialog');
 var insertSummaryEl = document.getElementById('insertSummary');
 var insertDetailEl = document.getElementById('insertDetail');
-var insertHintTxt = document.getElementById('insertHintTxt');
 var insertBatchBadge = document.getElementById('insertBatchBadge');
-var insertCatRow = document.getElementById('insertCatRow');
-var pendingInsert = null; // {kind, anchorId, dir, batch, editNode}
-var focusBeforeInsertDialog = null;
-var pendingInsertCategory = 'A'; // selected category for a NEW node being created in this dialog; ignored in edit mode (see insertCatRow click handler)
-var pendingInsertBorderLines = BORDER_LINES_DEFAULT; // importance for a NEW node; ignored in edit mode
-var pendingInsertMasterLevel = MASTER_LEVEL_DEFAULT; // proficiency for a NEW node; ignored in edit mode
+var insertCatTypeBtn = document.getElementById('insertCatTypeBtn');
+var insertColorBtn = document.getElementById('insertColorBtn');
+var insertBorderStyleBtn = document.getElementById('insertBorderStyleBtn');
 var insertBorderLinesValueEl = document.getElementById('insertBorderLinesValue');
 var insertMasterLevelValueEl = document.getElementById('insertMasterLevelValue');
+var insertSizeValueEl = document.getElementById('insertSizeValue');
+var pendingInsert = null; // {kind, anchorId, dir, batch, editNode}
+var focusBeforeInsertDialog = null;
+// defaults for a NEW node being created in this dialog — all ignored in
+// edit mode, which instead writes straight to pendingInsert.node (see
+// refreshInsertStatUI/each control's own click handler below).
+var pendingInsertCategory = 'A';
+var pendingInsertBorderLines = BORDER_LINES_DEFAULT;
+var pendingInsertMasterLevel = MASTER_LEVEL_DEFAULT;
+var pendingInsertColor = 0;
+var pendingInsertBorder = 'solid';
+var pendingInsertSizeMult = 1; // create-mode-only relative size multiplier, applied on top of makeNode's own defaults at commit time
 
-function refreshInsertCatUI(cat){
-  Array.prototype.forEach.call(insertCatRow.querySelectorAll('.id-cat-btn'), function(b){
-    b.classList.toggle('sel', b.dataset.cat===cat);
-  });
-}
-insertCatRow.addEventListener('mousedown', function(ev){
-  var btn = ev.target.closest('.id-cat-btn');
-  if(!btn || !pendingInsert) return;
-  ev.preventDefault();
-  var cat = btn.dataset.cat;
-  if(pendingInsert.mode==='edit'){
-    pushUndo();
-    setNodeCategory(pendingInsert.node.id, cat);
-    scheduleSave();
-    refreshInsertCatUI(pendingInsert.node.category);
-    render();
-  } else {
-    pendingInsertCategory = cat;
-    refreshInsertCatUI(cat);
-  }
-});
-/* importance (borderLines) and proficiency (masterLevel) steppers, shared
-   by both create mode (pendingInsertBorderLines/pendingInsertMasterLevel,
-   applied to the new node once it's actually created in
-   commitInsertDialog) and edit mode (writes straight to pendingInsert.node
-   and propagates immediately, same as every other in-place stat edit —
-   see propagateStatDown). */
+/* refresh every one of the 6 attribute controls' displayed value/preview
+   from whichever source (pendingInsert* vars in create mode, the node
+   itself in edit mode) is currently authoritative — called after EVERY
+   control's own click so the whole grid always reflects the live state,
+   same rebuild-on-change approach 手机精致模式's own property panel uses. */
 function refreshInsertStatUI(){
-  var bl = pendingInsert && pendingInsert.mode==='edit' ? (pendingInsert.node.borderLines||1) : pendingInsertBorderLines;
-  var ml = pendingInsert && pendingInsert.mode==='edit' ? (pendingInsert.node.masterLevel||MASTER_LEVEL_DEFAULT) : pendingInsertMasterLevel;
+  var editing = pendingInsert && pendingInsert.mode==='edit';
+  var n = editing ? pendingInsert.node : null;
+  var cat = editing ? n.category : pendingInsertCategory;
+  var bl = editing ? (n.borderLines||1) : pendingInsertBorderLines;
+  var ml = editing ? (n.masterLevel||MASTER_LEVEL_DEFAULT) : pendingInsertMasterLevel;
+  var colorIdx = editing ? (n.color||0) : pendingInsertColor;
+  var borderStyle = editing ? (n.border||'solid') : pendingInsertBorder;
+  insertCatTypeBtn.textContent = cat;
   insertBorderLinesValueEl.textContent = bl;
   insertMasterLevelValueEl.textContent = ml;
+  var preset = COLOR_PRESETS[colorIdx % COLOR_PRESETS.length];
+  var sw = isDarkTheme() ? preset.fillD : preset.fillL;
+  var bd = isDarkTheme() ? preset.borderD : preset.borderL;
+  insertColorBtn.innerHTML = '<span class="id-color-swatch" style="background:'+sw+';border-color:'+bd+';"></span>';
+  insertBorderStyleBtn.innerHTML = borderPreviewSvg(borderStyle);
+  insertSizeValueEl.textContent = (editing ? scalarScaleFor(n) : pendingInsertSizeMult).toFixed(2)+'×';
 }
+insertCatTypeBtn.addEventListener('click', function(){
+  if(!pendingInsert) return;
+  var cur = pendingInsert.mode==='edit' ? pendingInsert.node.category : pendingInsertCategory;
+  var next = cur==='A' ? 'B' : (cur==='B' ? 'C' : 'A');
+  if(pendingInsert.mode==='edit'){
+    pushUndo();
+    setNodeCategory(pendingInsert.node.id, next);
+    scheduleSave();
+    render();
+  } else {
+    pendingInsertCategory = next;
+  }
+  refreshInsertStatUI();
+});
 document.getElementById('insertBorderLinesStepper').addEventListener('click', function(ev){
   var btn = ev.target.closest('button'); if(!btn || !pendingInsert) return;
   var dir = parseInt(btn.dataset.dir, 10);
@@ -3996,7 +3919,46 @@ document.getElementById('insertMasterLevelStepper').addEventListener('click', fu
   }
   refreshInsertStatUI();
 });
-
+insertColorBtn.addEventListener('click', function(){
+  if(!pendingInsert) return;
+  if(pendingInsert.mode==='edit'){
+    var n = pendingInsert.node;
+    pushUndo();
+    n.color = (n.color+1) % COLOR_PRESETS.length;
+    scheduleSave(); render();
+  } else {
+    pendingInsertColor = (pendingInsertColor+1) % COLOR_PRESETS.length;
+  }
+  refreshInsertStatUI();
+});
+insertBorderStyleBtn.addEventListener('click', function(){
+  if(!pendingInsert) return;
+  if(pendingInsert.mode==='edit'){
+    var n = pendingInsert.node;
+    pushUndo();
+    var idx = BORDER_STYLES.indexOf(n.border);
+    n.border = BORDER_STYLES[(idx+1) % BORDER_STYLES.length];
+    scheduleSave(); render();
+  } else {
+    var idx2 = BORDER_STYLES.indexOf(pendingInsertBorder);
+    pendingInsertBorder = BORDER_STYLES[(idx2+1) % BORDER_STYLES.length];
+  }
+  refreshInsertStatUI();
+});
+document.getElementById('insertSizeStepper').addEventListener('click', function(ev){
+  var btn = ev.target.closest('button'); if(!btn || !pendingInsert) return;
+  var dir = parseInt(btn.dataset.dir, 10);
+  var factor = dir>0 ? 1.1 : 0.9;
+  if(pendingInsert.mode==='edit'){
+    var n = pendingInsert.node;
+    pushUndo();
+    if(n.drilled){ n.scaleXKids*=factor; n.scaleYKids*=factor; } else { n.scaleXNoKids*=factor; n.scaleYNoKids*=factor; }
+    scheduleSave(); render();
+  } else {
+    pendingInsertSizeMult *= factor;
+  }
+  refreshInsertStatUI();
+});
 
 function openInsertDialog(cfg){
   pendingInsert = cfg;
@@ -4006,14 +3968,14 @@ function openInsertDialog(cfg){
   // 预设: A的孩子默认A，B或C的孩子默认C — same rule as defaultCategoryForParent,
   // reused here for whichever anchor node the new node would be inserted
   // relative to (child/sibling both derive from the SAME parent).
-  if(cfg.node){
-    refreshInsertCatUI(cfg.node.category);
-  } else {
+  if(!cfg.node){
     var parentIdForDefault = (cfg.mode==='child' || cfg.mode==='wrapChild') ? cfg.anchorId : (parentOf(cfg.anchorId)||{}).id;
     pendingInsertCategory = parentIdForDefault ? defaultCategoryForParent(parentIdForDefault) : 'A';
-    refreshInsertCatUI(pendingInsertCategory);
     pendingInsertBorderLines = BORDER_LINES_DEFAULT;
     pendingInsertMasterLevel = MASTER_LEVEL_DEFAULT;
+    pendingInsertColor = 0;
+    pendingInsertBorder = 'solid';
+    pendingInsertSizeMult = 1;
   }
   refreshInsertStatUI();
   insertOverlay.classList.add('show');
@@ -4074,6 +4036,12 @@ function commitInsertDialog(){
       var newNode = node(newId);
       newNode.borderLines = pendingInsertBorderLines;
       newNode.masterLevel = pendingInsertMasterLevel;
+      newNode.color = pendingInsertColor;
+      newNode.border = pendingInsertBorder;
+      if(pendingInsertSizeMult!==1){
+        newNode.scaleXNoKids *= pendingInsertSizeMult; newNode.scaleYNoKids *= pendingInsertSizeMult;
+        newNode.scaleXKids *= pendingInsertSizeMult; newNode.scaleYKids *= pendingInsertSizeMult;
+      }
       selectedId = newId; triggerGlow();
     }
     scheduleSave();
@@ -4202,19 +4170,6 @@ document.addEventListener('keydown', function(e){
     // and Esc always dismisses it immediately regardless of which OTHER
     // layer this same Escape press goes on to clear below.
     clearSizeGauge();
-    // the color/border style popover (⌃click / ⌃Enter) is its OWN layer,
-    // one step ABOVE even the rail panel it might be sitting on top of
-    // (e.g. ⌃Enter on a tree row while the tree panel is open) — closing
-    // it must be a dedicated Esc press on its own, not silently bundled
-    // into whatever the next tier down happens to close. Previously this
-    // popover-close only ran as a side-effect line inside the branches
-    // below, so "打开树视图,⌃Enter打开颜色面板,按Esc" closed the popover
-    // AND the whole tree panel in one press instead of two ("第一次Esc
-    // 关闭颜色控制面板,第二次才是退出导航").
-    if(document.querySelector('.pop')){
-      closePopover(); render();
-      return;
-    }
     if(anyRailPanelOpen()){
       var keepSelectionOnEsc = (treeFlyout && treeFlyout.classList.contains('open'))
         || (searchFlyout && searchFlyout.classList.contains('open'));
@@ -4405,19 +4360,10 @@ document.addEventListener('keydown', function(e){
     return;
   }
 
-  // ⌃Enter mirrors ⌃click on a canvas node (opens the color/border style
-  // popover) — the same equivalence tree-view rows already have via their
-  // own ⌃Enter handler (see handleTreeRowKeydown), just missing here on
-  // the canvas side. No real mouse position when triggered from the
-  // keyboard, so the popover anchors off the selected node's own
-  // on-screen DOM rect instead of clientX/clientY.
-  if(e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key==='Enter'){
-    e.preventDefault();
-    var curEl = stage.querySelector('[data-id="'+cur.id+'"]');
-    var curRect = curEl ? curEl.getBoundingClientRect() : {left:0,top:0,width:0,height:0};
-    openStylePopover(curRect.left+curRect.width/2, curRect.top+curRect.height/2, cur);
-    return;
-  }
+  // ⌃Enter (right-click-style style popover) has been removed entirely —
+  // "电脑版彻底删除ctrl+单击的所有功能...因为已经包含在option版本最底下了"
+  // (the same color/border/线条数 controls now live in the unified
+  // Option+click insert/edit dialog's own attribute grid).
 
   if(e.altKey && !e.metaKey && !e.ctrlKey && e.shiftKey){
     var batchDirMap = {ArrowDown:'child', ArrowRight:'sibling-r', ArrowLeft:'sibling-l'};
@@ -4960,11 +4906,6 @@ function commitSearchResult(n){
 function altActivateSearchResult(n){
   openInsertDialog({mode:'edit', node:n});
 }
-/* ⌃click on a search result opens the color/border style popover for that
-   node, anchored at the click position — same as ⌃click elsewhere. */
-function ctrlActivateSearchResult(n, x, y){
-  openStylePopover(x, y, n);
-}
 function setSearchActive(idx){
   var items = searchResults.querySelectorAll('.sr-item');
   items.forEach(function(it){ it.classList.remove('sr-active'); });
@@ -4998,15 +4939,6 @@ searchInput.addEventListener('input', function(){
     });
     item.addEventListener('click', function(ev){
       if(ev.altKey){ altActivateSearchResult(n); return; }
-      if(ev.ctrlKey){
-        // a keyboard-synthesized MouseEvent (⌃Enter) carries clientX/Y of
-        // 0,0 since there's no real cursor position — anchor the popover
-        // off the item's own on-screen rect in that case instead.
-        var cx = ev.clientX, cy = ev.clientY;
-        if(!cx && !cy){ var r = item.getBoundingClientRect(); cx = r.left+20; cy = r.top+8; }
-        ctrlActivateSearchResult(n, cx, cy);
-        return;
-      }
       commitSearchResult(n);
     });
     searchResults.appendChild(item);
@@ -5039,11 +4971,11 @@ searchInput.addEventListener('keydown', function(e){
       // "选中节点然后回车时,能看到修改节点信息" bug: this Enter should only
       // ever select/activate, never edit.
       e.stopPropagation();
-      // ⌥Enter / ⌃Enter mirror ⌥click / ⌃click on the highlighted result —
-      // forward the modifier flags into the synthesized click so the
-      // item's own click handler (which checks ev.altKey/ev.ctrlKey) picks
-      // the same branch a real modified click would have.
-      items[searchActiveIdx].dispatchEvent(new MouseEvent('click', {altKey:e.altKey, ctrlKey:e.ctrlKey}));
+      // ⌥Enter mirrors ⌥click on the highlighted result — forward the
+      // modifier flag into the synthesized click so the item's own click
+      // handler (which checks ev.altKey) picks the same branch a real
+      // Option+click would have.
+      items[searchActiveIdx].dispatchEvent(new MouseEvent('click', {altKey:e.altKey}));
     }
     return;
   }
@@ -5166,10 +5098,6 @@ function renderTreeView(){
     }
     row.addEventListener('click', function(ev){
       ev.stopPropagation();
-      if(ev.ctrlKey){
-        openStylePopover(ev.clientX, ev.clientY, n);
-        return;
-      }
       if(ev.altKey){
         selectedId = id;
         treeFocusId = id;
@@ -5202,10 +5130,6 @@ function renderTreeView(){
       makeTreeSelectionVisibleOnCanvas(id);
       renderTreeView();
       render();
-    });
-    row.addEventListener('contextmenu', function(ev){
-      ev.preventDefault(); ev.stopPropagation();
-      openStylePopover(ev.clientX, ev.clientY, n);
     });
     row.addEventListener('keydown', function(ev){ handleTreeRowKeydown(ev, id, n, hasKids, isTreeRoot); });
     attachTreeRowDrag(row, id);
@@ -5426,21 +5350,14 @@ function handleTreeRowKeydown(ev, id, n, hasKids, isTreeRoot){
   if(ev.key==='Enter'){
     ev.preventDefault();
     ev.stopPropagation();
-    // ⌥Enter / ⌃Enter mirror ⌥click / ⌃click (edit dialog / style popover)
-    // on the same row — there's no real mouse position when triggered from
-    // the keyboard, so the popover anchors off the focused row's own
-    // on-screen rect instead of clientX/clientY.
+    // ⌥Enter mirrors ⌥click (opens the unified edit dialog) on the same
+    // row — there's no real mouse position when triggered from the
+    // keyboard, but openInsertDialog needs none.
     if(ev.altKey){
       selectedId = id;
       treeFocusId = id;
       renderTreeView();
       openInsertDialog({mode:'edit', node:n});
-      return;
-    }
-    if(ev.ctrlKey){
-      var rowEl = treeList.querySelector('.tv-row[data-id="'+id+'"]');
-      var rect = rowEl ? rowEl.getBoundingClientRect() : {left:0,top:0};
-      openStylePopover(rect.left+20, rect.top+8, n);
       return;
     }
     // ⌘Enter/⌘⇧Enter mirror ⌘click/⌘⇧click EXACTLY (cycleVis / batch
@@ -5784,7 +5701,6 @@ function closeRbCtxMenu(){
 function closeRbCtxMenuOnce(e){ if(!e.target.closest('.ctx-menu')) closeRbCtxMenu(); }
 function openRbCtxMenu(x, y, btn){
   closeRbCtxMenu();
-  closePopover();
   var menu = document.createElement('div');
   menu.className = 'ctx-menu';
   menu.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
@@ -6604,6 +6520,16 @@ var compactRelaxSliderEl = document.getElementById('compactRelaxSlider');
 // falls back to the "first child" default instead of being stuck
 // re-visiting the same remembered child forever.
 var compactLastChildFromRoot = null;
+// "激活以后节点位置可以被拖拽...再点击一次按钮,退出节点拖拽平移功能" —
+// checked by nodeMousedown's own compact-mode routing (see its
+// n.parentId===state.focusId branch) to decide whether a direct child's
+// tap starts a live drag instead of the normal tap/long-press vocabulary.
+var compactDragModeOn = false;
+var cbDragToggleEl = document.getElementById('cbDragToggle');
+cbDragToggleEl.addEventListener('click', function(){
+  compactDragModeOn = !compactDragModeOn;
+  cbDragToggleEl.classList.toggle('active', compactDragModeOn);
+});
 
 cbSearchEl.addEventListener('click', function(){ btnSearch.click(); });
 cbTreeEl.addEventListener('click', function(){ openCompactTreeSheet(); });
@@ -6646,38 +6572,35 @@ cbNavSiblingEl.addEventListener('click', function(){
   scheduleSave(); render();
 });
 /* "第一个+是在当前的节点下面新建一个小孩和其他可以看见的小孩平级,或者
-   如果没有已知的小孩,那么则新建第一个孩子节点" — a plain addChild under
-   the current focus root, same defaults every other "insert" path in this
-   file already uses (category/borderLines/masterLevel all fall through to
-   makeNode's own defaults, exactly like a bare, no-dialog insert). */
+   如果没有已知的小孩,那么则新建第一个孩子节点" — opens the SAME unified
+   dialog every other insert path uses (mode:'child') instead of directly
+   creating an empty, un-editable node — "应该要弹出【文本基本信息编辑框】,
+   而不是直接新建一个空信息的节点,无法编辑". commitInsertDialog already
+   silently no-ops on an empty submit, so cancelling out of this dialog
+   leaves the tree untouched, same as every other creation path. */
 document.getElementById('cbAddChild').addEventListener('click', function(){
-  pushUndo();
-  var pid = state.focusId;
-  var newId = addChild(pid, '', '');
-  node(pid).drilled = true;
-  selectedId = newId; triggerGlow();
-  scheduleSave(); render();
+  openInsertDialog({mode:'child', anchorId:state.focusId});
 });
 /* "第二个+表示在根节点目录下新建到一个特殊的编号为一的节点,如果没有这个
    节点就创建,否则直接追加到已有的孩子列表里面" — looks for a direct child
    of state.rootId whose summary is exactly "1" (plain-text compare, same
    richToPlain everything else in this file already uses to read a rich-
-   text summary as plain text); creates it if missing, then always adds
-   the new node as ITS child, never as a second "1" node.
+   text summary as plain text); creates it (via a real pushUndo/addChild
+   pair, since that container node itself has no dialog of its own) if
+   missing, then opens the SAME unified dialog (mode:'child') anchored on
+   it for the new node's own text/attributes — never a second "1" node.
    */
 document.getElementById('cbAddToInbox').addEventListener('click', function(){
-  pushUndo();
   var rootKids = children(state.rootId);
   var inbox = rootKids.filter(function(k){ return richToPlain(k.summary)==='1'; })[0];
   if(!inbox){
+    pushUndo();
     var inboxId = addChild(state.rootId, '1', '');
     inbox = node(inboxId);
     node(state.rootId).drilled = true;
+    scheduleSave(); render();
   }
-  var newId = addChild(inbox.id, '', '');
-  inbox.drilled = true;
-  selectedId = newId; triggerGlow();
-  scheduleSave(); render();
+  openInsertDialog({mode:'child', anchorId:inbox.id});
 });
 cbMoreEl.addEventListener('click', function(){
   compactMoreSheetEl.classList.toggle('open');
@@ -6690,9 +6613,8 @@ document.getElementById('cbMoreTheme').addEventListener('click', function(){ btn
 document.getElementById('cbMoreImport').addEventListener('click', function(){ document.getElementById('btnImport').click(); });
 document.getElementById('cbMoreExport').addEventListener('click', function(){ document.getElementById('btnExport').click(); });
 document.getElementById('cbMoreFit').addEventListener('click', function(){ document.getElementById('btnFit').click(); });
-document.getElementById('cbMoreResetVisible').addEventListener('click', function(){ document.getElementById('btnResetVisibleSizes').click(); });
 document.getElementById('cbMoreResetAll').addEventListener('click', function(){ document.getElementById('btnResetAllSizes').click(); });
-document.getElementById('cbCenterVisibleChildren').addEventListener('click', function(){ document.getElementById('btnCenterVisibleChildren').click(); });
+document.getElementById('cbResetVisibleSizes').addEventListener('click', function(){ document.getElementById('btnResetVisibleSizes').click(); });
 document.getElementById('cbMoreDesktop').addEventListener('click', function(){
   compactMoreSheetEl.classList.remove('open');
   appParams.uiMode = 'desktop'; applyUiMode('desktop'); saveParams();
