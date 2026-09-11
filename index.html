@@ -788,23 +788,37 @@
   }
   .compact-btn svg{width:55%;height:55%;}
   .compact-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
-  /* ⬆️/⬇️/➡️ nav cluster: a self-contained 2x2 grid (⬆️ top-left, ⬇️
-     bottom-left, ➡️ spanning both rows on the right, vertically centered
-     between them) — full-size buttons, not the old half-height stack,
-     per "不要把上下按钮压缩只有一半高度...一定要保证这两个按钮上下左右
-     对齐...➡️按钮如果能和上下按钮竖直方向居中对齐更好". Sits as ONE flex
-     child inside row1; row1's own height grows to fit it (2 button-rows
-     tall), and row1's other buttons (search/tree/add/more) stay
-     vertically centered against that taller row via row1's own
-     align-items:center, so nothing else needs to change size. */
-  .compact-nav-cluster{
+  /* search+tree cluster: "tree view按钮放在搜索按钮正下方" — same
+     stacked-pair pattern as .compact-nav-cluster's own up/down pairing,
+     just a single column instead of nav-cluster's extra spanning-column
+     button, so it sits as ONE flex child the same height as nav-cluster
+     (2 button-rows tall) without needing its own separate CSS idea. */
+  .compact-searchtree-cluster{
     display:grid;flex-shrink:0;
-    grid-template-columns:clamp(34px,10vw,46px) clamp(34px,10vw,46px);
     grid-template-rows:clamp(34px,10vw,46px) clamp(34px,10vw,46px);
     gap:clamp(3px,1vw,6px);
-    grid-template-areas:"up right" "down right";
+  }
+  .compact-searchtree-cluster .compact-btn{width:100%;height:100%;}
+  /* ⬅️/⬆️/⬇️/➡️ nav cluster: a self-contained 2x3 grid (⬅️ spanning both
+     rows on the far left, ⬆️ top-middle, ⬇️ bottom-middle, ➡️ spanning
+     both rows on the right) — ⬅️ mirrors ➡️'s own full-height span so
+     the two are visually symmetric on opposite sides of ⬆️/⬇️, per "在
+     ⬆️⬇️的左边添加一个⬅️按钮,高度和➡️对称". full-size buttons, not a
+     half-height stack, per "不要把上下按钮压缩只有一半高度...一定要保证
+     这两个按钮上下左右对齐...➡️按钮如果能和上下按钮竖直方向居中对齐更
+     好". Sits as ONE flex child inside row1; row1's own height grows to
+     fit it (2 button-rows tall), and row1's other buttons stay vertically
+     centered against that taller row via row1's own align-items:center,
+     so nothing else needs to change size. */
+  .compact-nav-cluster{
+    display:grid;flex-shrink:0;
+    grid-template-columns:clamp(34px,10vw,46px) clamp(34px,10vw,46px) clamp(34px,10vw,46px);
+    grid-template-rows:clamp(34px,10vw,46px) clamp(34px,10vw,46px);
+    gap:clamp(3px,1vw,6px);
+    grid-template-areas:"left up right" "left down right";
   }
   .compact-nav-cluster .compact-btn{width:100%;height:100%;}
+  #cbNavPrevSibling{grid-area:left;}
   #cbNavUp{grid-area:up;}
   #cbNavDown{grid-area:down;}
   #cbNavSibling{grid-area:right;}
@@ -901,12 +915,24 @@
     color:var(--text-main);border-bottom:1px solid var(--panel-border);
   }
   #compactTreeBack{cursor:pointer;font-size:clamp(18px,4.4vw,22px);font-weight:700;color:var(--text-dim);}
-  #compactTreeList{flex:1;overflow-y:auto;padding:6px;}
+  #compactTreeList{flex:1;overflow-y:auto;padding:6px;position:relative;}
   .ctv-row{
     display:flex;align-items:center;gap:8px;padding:clamp(7px,2vw,10px) clamp(6px,2vw,10px);
     border-radius:9px;cursor:pointer;font-size:clamp(12px,3vw,14px);color:var(--text-main);
   }
   .ctv-row:active{background:rgba(120,130,160,.14);}
+  /* long-press-drag-to-reparent visuals, mirroring desktop's own
+     .tv-drop-line/.tv-row.tv-drop-inside/.tv-row.tv-dragging exactly (see
+     attachTreeRowDrag) — "拖拽到其他根节点下方,就像电脑版一样,有一个虚线和
+     虚线框的预览效果". A separate class name (ctv- prefix) since these
+     apply to .ctv-row, not desktop's .tv-row, but the same look. */
+  .ctv-drop-line{
+    position:absolute;left:8px;right:8px;height:0;border-top:2px dashed var(--accent);
+    display:none;pointer-events:none;z-index:5;
+  }
+  .ctv-drop-line.show{display:block;}
+  .ctv-row.ctv-drop-inside{outline:1.5px dashed var(--accent);background:rgba(67,97,238,.1);}
+  .ctv-row.ctv-dragging{opacity:.4;}
   /* the tag ("A(1,1)"/"B(3,2)") is its OWN tap target — tapping it jumps
      to that node as root and closes the sheet — separate from tapping the
      row body, which instead only expands/collapses — "点击节点左侧A(1,1)
@@ -995,19 +1021,23 @@
 
   <div id="compactBar">
     <div id="compactBarRow1">
-      <button class="compact-btn" id="cbSearch" title="搜索">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg>
-      </button>
-      <button class="compact-btn" id="cbTree" title="树状视图">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
-      </button>
+      <div class="compact-searchtree-cluster">
+        <button class="compact-btn" id="cbSearch" title="搜索">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg>
+        </button>
+        <button class="compact-btn" id="cbTree" title="树状视图">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M7 6h6a3 3 0 0 1 3 3v0"/><path d="M7 18h6a3 3 0 0 0 3-3v0"/></svg>
+        </button>
+      </div>
       <div class="compact-nav-cluster">
-        <button class="compact-btn" id="cbNavUp" title="跳转到根节点">⬆️</button>
-        <button class="compact-btn" id="cbNavDown" title="跳转到此节点（之前的子节点）">⬇️</button>
-        <button class="compact-btn" id="cbNavSibling" title="循环跳转兄弟节点">➡️</button>
+        <button class="compact-btn" id="cbNavPrevSibling" title="循环跳转到上一个兄弟节点">⬅️</button>
+        <button class="compact-btn" id="cbNavUp" title="上跳一级（可见区域根节点变为其父节点）">⬆️</button>
+        <button class="compact-btn" id="cbNavDown" title="下跳回到刚离开的节点">⬇️</button>
+        <button class="compact-btn" id="cbNavSibling" title="循环跳转到下一个兄弟节点">➡️</button>
       </div>
       <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
       <button class="compact-btn" id="cbAddToInbox" title="新建节点到 1 号收纳节点">✳️</button>
+      <button class="compact-btn" id="cbMakeRoot" title="以最近选中的节点为根节点视图（等价双击）">🟧</button>
       <button class="compact-btn" id="cbMore" title="更多">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
       </button>
@@ -1841,6 +1871,38 @@ function deleteSubtree(id){
       b.checkedIds = b.checkedIds.filter(function(cid){ return ids.indexOf(cid)===-1; });
     });
   }
+}
+/* deletes ONLY id itself — its own children are promoted to become direct
+   children of id's former parent, at the position id used to occupy, so
+   the rest of that subtree survives intact instead of being deleted along
+   with it (deleteSubtree's behavior, still used where "delete the whole
+   subtree" is genuinely what's wanted). Used by 手机精致模式's tree-view
+   long-press-on-badge delete menu's own "删除此节点" option, alongside a
+   second "删除此节点及全部子树" option that just calls deleteSubtree — "支持
+   删除节点和全部子树" reads as two distinct, separately-offered actions,
+   not one merged behavior.  */
+function deleteNodeOnly(id){
+  var n = node(id); if(!n) return;
+  if(id===state.rootId || !n.parentId) return; // can't delete the ultimate root, or promote a root's children above it
+  var pn = node(n.parentId);
+  if(!pn) return;
+  var idx = pn.children.indexOf(id);
+  var ownKids = n.children.slice();
+  ownKids.forEach(function(cid){
+    var c = node(cid);
+    if(c) c.parentId = pn.id;
+  });
+  pn.children.splice(idx, 1);
+  Array.prototype.splice.apply(pn.children, [idx, 0].concat(ownKids));
+  n.children = [];
+  if(state.focusId===id) state.focusId = pn.id;
+  if(selectedId===id) selectedId = pn.id;
+  if(state.randomButtons){
+    state.randomButtons.forEach(function(b){
+      b.checkedIds = b.checkedIds.filter(function(cid){ return cid!==id; });
+    });
+  }
+  delete state.nodes[id];
 }
 function insertParentAbove(id){
   var n = node(id); if(!n) return null;
@@ -3648,15 +3710,17 @@ function nodeMousedown(ev, el, n){
       startCompactGroupPan(ev);
       return;
     }
-    // "激活以后节点位置可以被拖拽...每个一级子节点都视为一个单独的对象,
-    // 可以被拖拽,母节点和二级子节点不可操控" — while armed, ONLY a direct
-    // child of the current focus root starts a drag; the root itself keeps
-    // panning (above) and any deeper descendant falls through to the
-    // normal tap/long-press vocabulary untouched.
-    if(compactDragModeOn && n.parentId===state.focusId){
-      startNodeDrag(ev, el, n);
-      return;
-    }
+    // "🖐️还是有问题,无法合理拖拽...取消触摸拖拽的功能" — a real single-
+    // finger touch-drag on a small phone screen kept mis-registering as a
+    // tap/long-press instead of a clean drag (see the touch-bridge
+    // dispatching synthetic mouse events at the top of this file — a
+    // continuous drag gesture is inherently harder to keep in sync that
+    // way than a single discrete tap is). compactDragModeOn no longer
+    // intercepts the tap here at all; while it's armed, a tap on a direct
+    // child just falls through to the normal compactNodeMousedown tap
+    // vocabulary below (selecting/cycling it exactly as if drag mode were
+    // off), and the ⬅️⬆️⬇️➡️ buttons move whatever that leaves selected —
+    // see their own click handlers, gated on compactDragModeOn.
     compactNodeMousedown(ev, el, n);
     return;
   }
@@ -6152,7 +6216,39 @@ document.getElementById('btnResetVisibleSizes').addEventListener('click', functi
   var focusId = state.focusId;
   var kidIds = children(focusId).map(function(k){ return k.id; });
   resetNodeSizes([focusId].concat(kidIds));
+  // symmetrizeChildrenOf measures each child's box (via containerSize/
+  // computeNodeBox, both of which read crowdScaleFor) to decide spacing —
+  // crowdScaleMap is normally only reset to neutral inside render(), so
+  // calling this BEFORE a render (as every reset button does, to compute
+  // the new positions render() will then draw) means it's still reading
+  // whatever shrink factor was left over from the PRE-reset layout. A
+  // child that was crowded/shrunk before the reset gets spaced using its
+  // stale, smaller measured size, then render() immediately after resets
+  // crowdScaleMap to neutral and draws it at its true (larger) size —
+  // landing it overflowing the space symmetrize only budgeted for the
+  // shrunk version. Worse the more crowded that child's own children
+  // were pre-reset (a drilled child especially), matching "存在子节点
+  // 展开的情况...尤其". Clearing it here forces symmetrizeChildrenOf to
+  // measure every child at its true neutral size, matching what the
+  // following render() will actually draw.
+  crowdScaleMap = {};
   symmetrizeChildrenOf(focusId);
+  // 手机精致模式's own children-group scale/pan (compactChildrenView) is a
+  // DISPLAY-layer transform computed from the group's bbox — symmetrize
+  // just moved every direct child (including any already-drilled/expanded
+  // one) to a brand-new bbox, but the OLD offsetX/offsetY (tuned for the
+  // PREVIOUS arrangement's shape) was left in compactChildrenView. The
+  // very next render() only CLAMPS that stale offset to the new bbox's
+  // bounds (see clampCompactChildrenOffset) rather than recentering it,
+  // so a big leftover pan from before the reset can still sit at the
+  // group's edge instead of centered — exactly "重新排版...显示层的预设
+  // 也要一起更新...保证显示层正确看到所有子节点", reported worst when a
+  // child was already drilled (a much larger bbox swap, so the stale
+  // offset's clamp bounds shift the most). Zeroing it here — the same
+  // reset render()'s own focusChanged branch already does for an actual
+  // focus change — forces a fresh, centered fit on the next render
+  // instead of carrying over geometry that no longer matches.
+  compactChildrenView.offsetX = 0; compactChildrenView.offsetY = 0;
   scheduleSave();
   render();
   resyncRootView();
@@ -6166,7 +6262,13 @@ document.getElementById('btnResetAllSizes').addEventListener('click', function()
   if(!confirm('将重置整棵树所有节点的大小，并把每一层的子节点重新排布为对称图形。此操作影响全树，可用 ⌘Z 撤销。是否继续？')) return;
   pushUndo();
   resetNodeSizes(subtreeIds(state.rootId));
+  // same stale-crowdScaleMap issue as btnResetVisibleSizes above, just
+  // across the whole tree instead of one node's direct children — see
+  // that handler's own comment for why this must be cleared before
+  // symmetrizeAllRecursive's own containerSize/computeNodeBox measurements.
+  crowdScaleMap = {};
   symmetrizeAllRecursive(state.rootId);
+  if(isCompactMode()){ compactChildrenView.offsetX = 0; compactChildrenView.offsetY = 0; }
   scheduleSave();
   render();
 });
@@ -6572,6 +6674,7 @@ var cbTreeEl = document.getElementById('cbTree');
 var cbNavUpEl = document.getElementById('cbNavUp');
 var cbNavDownEl = document.getElementById('cbNavDown');
 var cbNavSiblingEl = document.getElementById('cbNavSibling');
+var cbNavPrevSiblingEl = document.getElementById('cbNavPrevSibling');
 var cbMoreEl = document.getElementById('cbMore');
 var compactMoreSheetEl = document.getElementById('compactMoreSheet');
 var compactRandomZoneEl = document.getElementById('compactRandomZone');
@@ -6579,47 +6682,80 @@ var compactDepthValueEl = document.getElementById('compactDepthValue');
 var compactDepthMinusEl = document.getElementById('compactDepthMinus');
 var compactDepthPlusEl = document.getElementById('compactDepthPlus');
 var compactRelaxSliderEl = document.getElementById('compactRelaxSlider');
-// remembers which direct child of state.rootId ⬆️ last stepped up FROM —
-// so a following ⬇️ returns to that exact child instead of an arbitrary
-// one — "向下表示切换到此节点...如果刚刚使用过向上切换到跟节点则需要退回
-// 到之前同一个子节点". Cleared the moment ⬇️ actually consumes it (see
-// cbNavDownEl below), so a second ⬇️ press without an intervening ⬆️
-// falls back to the "first child" default instead of being stuck
-// re-visiting the same remembered child forever.
-var compactLastChildFromRoot = null;
-// "激活以后节点位置可以被拖拽...再点击一次按钮,退出节点拖拽平移功能" —
-// checked by nodeMousedown's own compact-mode routing (see its
-// n.parentId===state.focusId branch) to decide whether a direct child's
-// tap starts a live drag instead of the normal tap/long-press vocabulary.
+// ⬆️/⬇️ 's shared stack: ⬆️ pushes the node it's LEAVING before moving
+// focus up to that node's immediate parent, ⬇️ pops and returns to it —
+// "刚按完⬆️以后立刻按⬇️,应该要回到刚刚的节点,也就是堆栈". A real stack
+// (not the old single remembered slot) means an intervening ➡️ (sibling
+// cycle, which never touches this stack) doesn't break a later ⬇️ from
+// still finding the right node — "⬆️以后又按了➡️跳转到其他节点再⬇️,就
+// 回不到之前的节点了" was exactly the single-slot version's failure mode,
+// since ⬆️ itself doesn't overwrite/consume anything ➡️ touched. Popped
+// entries are validated against node() existing before use, so a node
+// deleted while sitting on the stack is silently skipped rather than
+// crashing ⬇️.
+var compactNavStack = [];
+// "🖐️还是有问题,无法合理拖拽...取消触摸拖拽的功能。修改为用方向键拖拽" —
+// 🖐️ no longer arms a touch-drag (see nodeMousedown's own compact-mode
+// routing above, which now always falls through to the plain tap
+// vocabulary regardless of this flag). Armed, it repurposes the
+// ⬅️⬆️⬇️➡️ buttons (see their own click handlers below, each gated on
+// this flag) to nudge currentSelectedNode()'s px/py by COMPACT_MOVE_STEP
+// instead of navigating the focus root/siblings; a second 🖐️ tap
+// disarms it and restores their normal navigation meaning.
+var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge without needing dozens of taps to cross a sibling gap
 var compactDragModeOn = false;
 var cbDragToggleEl = document.getElementById('cbDragToggle');
 cbDragToggleEl.addEventListener('click', function(){
   compactDragModeOn = !compactDragModeOn;
   cbDragToggleEl.classList.toggle('active', compactDragModeOn);
 });
+// shared by all four arrow buttons while move-mode is armed: nudges
+// currentSelectedNode() by (dx,dy) unit-scaled by COMPACT_MOVE_STEP. Only
+// a direct child of the current focus root is actually draggable in this
+// mode (mirrors the OLD touch-drag's own "母节点和二级子节点不可操控"
+// restriction) — moving the focus root itself is meaningless (it's
+// invisible/frameless and always re-centered, see compact-root-hide-
+// frame), and a grandchild+ isn't a rigid-group member this view's own
+// bbox/scale math is centered against.
+function compactMoveSelected(dx, dy){
+  var n = currentSelectedNode();
+  if(!n || n.parentId!==state.focusId) return;
+  pushUndo();
+  n.px += dx*COMPACT_MOVE_STEP;
+  n.py += dy*COMPACT_MOVE_STEP;
+  scheduleSave(); render();
+}
 
 cbSearchEl.addEventListener('click', function(){ btnSearch.click(); });
 cbTreeEl.addEventListener('click', function(){ openCompactTreeSheet(); });
 cbNavUpEl.addEventListener('click', function(){
-  // "向上表示切换到跟节点的节点" — jumps straight to state.rootId, not
-  // just the immediate parent.
+  if(compactDragModeOn){ compactMoveSelected(0, -1); return; }
+  // "只能可见区域往上跳跃一级,而不是直接到全局根节点" — moves the visible
+  // root to its own immediate parent (NOT all the way to state.rootId).
+  // At state.rootId itself there IS no parent, so this is a no-op there,
+  // same as before.
   var curId = state.focusId;
-  if(curId===state.rootId) return;
+  var pn = parentOf(curId);
+  if(!pn) return;
   pushUndo();
-  compactLastChildFromRoot = curId;
-  state.focusId = state.rootId;
-  collapseBeyondDepth(state.rootId, appParams.maxAutoDepth);
+  compactNavStack.push(curId);
+  state.focusId = pn.id;
+  collapseBeyondDepth(pn.id, appParams.maxAutoDepth);
   scheduleSave(); render();
 });
 cbNavDownEl.addEventListener('click', function(){
-  // "向下表示切换到此节点" — returns to whichever direct child of the
-  // ROOT ⬆️ most recently left, if it's still a real child of the root;
-  // otherwise falls back to the root's own first child.
-  var kids = children(state.rootId);
-  if(!kids.length) return;
-  var target = (compactLastChildFromRoot && kids.some(function(k){ return k.id===compactLastChildFromRoot; }))
-    ? node(compactLastChildFromRoot) : kids[0];
-  compactLastChildFromRoot = null; // consumed — a second ⬇️ press falls back to "first child"
+  if(compactDragModeOn){ compactMoveSelected(0, 1); return; }
+  // pops compactNavStack and returns to whatever node ⬆️ most recently
+  // left — skipping (not crashing on) any popped id whose node has since
+  // been deleted, so a single stale entry can't wedge every ⬇️ press
+  // after it.
+  var target = null;
+  while(compactNavStack.length){
+    var id = compactNavStack.pop();
+    var n = node(id);
+    if(n){ target = n; break; }
+  }
+  if(!target) return;
   pushUndo();
   target.drilled = true;
   state.focusId = target.id;
@@ -6627,6 +6763,7 @@ cbNavDownEl.addEventListener('click', function(){
   scheduleSave(); render();
 });
 cbNavSiblingEl.addEventListener('click', function(){
+  if(compactDragModeOn){ compactMoveSelected(1, 0); return; }
   var curId = state.focusId;
   var pn = parentOf(curId);
   if(!pn || pn.children.length<2) return;
@@ -6636,6 +6773,21 @@ cbNavSiblingEl.addEventListener('click', function(){
   state.focusId = nextId;
   collapseBeyondDepth(nextId, appParams.maxAutoDepth);
   setExpandedToDepth(nextId, appParams.maxAutoDepth);
+  scheduleSave(); render();
+});
+// ⬅️ mirrors ➡️ exactly but cycles to the PREVIOUS sibling instead of the
+// next one — "高度和➡️对称,功能一样,只不过是相反方向切换孩子".
+cbNavPrevSiblingEl.addEventListener('click', function(){
+  if(compactDragModeOn){ compactMoveSelected(-1, 0); return; }
+  var curId = state.focusId;
+  var pn = parentOf(curId);
+  if(!pn || pn.children.length<2) return;
+  var idx = pn.children.indexOf(curId);
+  var prevId = pn.children[(idx-1+pn.children.length) % pn.children.length];
+  pushUndo();
+  state.focusId = prevId;
+  collapseBeyondDepth(prevId, appParams.maxAutoDepth);
+  setExpandedToDepth(prevId, appParams.maxAutoDepth);
   scheduleSave(); render();
 });
 /* "第一个+是在当前的节点下面新建一个小孩和其他可以看见的小孩平级,或者
@@ -6668,6 +6820,21 @@ document.getElementById('cbAddToInbox').addEventListener('click', function(){
     scheduleSave(); render();
   }
   openInsertDialog({mode:'child', anchorId:inbox.id});
+});
+// 🟧: "最近选中的节点变成根节点视图,相当于双击触摸" — same effect as
+// compactNodeTap's own double-tap branch (n.drilled=true; state.focusId=
+// n.id), just reachable from a single button tap on whichever node
+// currentSelectedNode() resolves to (selectedId if set, else the current
+// focus root — same fallback every other selection-driven action here
+// already uses).
+document.getElementById('cbMakeRoot').addEventListener('click', function(){
+  var n = currentSelectedNode();
+  if(!n) return;
+  pushUndo();
+  n.drilled = true;
+  state.focusId = n.id;
+  selectedId = null;
+  scheduleSave(); render();
 });
 cbMoreEl.addEventListener('click', function(){
   compactMoreSheetEl.classList.toggle('open');
@@ -6733,6 +6900,176 @@ document.getElementById('compactTreeBack').addEventListener('click', closeCompac
   });
   window.addEventListener('mouseup', function(){ tracking = false; });
 })();
+// shared across renderCompactTreeView's whole walk — see the tag's own
+// click handler above for why this exists (suppress the jump-to-root tap
+// that would otherwise ALSO fire right after a long-press's mouseup).
+var tagLongPressFired = false;
+// reuses the same .ctx-menu/.ctx-menu-item styling openRbCtxMenu already
+// established — "支持删除节点和全部子树" as two separately offered
+// actions (see deleteNodeOnly's own comment for why they're kept
+// distinct). Closes on any outside mousedown, same dismiss pattern as
+// openRbCtxMenu.
+function closeTreeDeleteMenu(){
+  document.querySelectorAll('.ctx-menu').forEach(function(m){ m.remove(); });
+  document.removeEventListener('mousedown', closeTreeDeleteMenuOnce, {capture:true});
+}
+function closeTreeDeleteMenuOnce(e){ if(!e.target.closest('.ctx-menu')) closeTreeDeleteMenu(); }
+function openTreeDeleteMenu(x, y, id){
+  closeTreeDeleteMenu();
+  var n = node(id);
+  if(!n || id===state.rootId) return; // "can't delete the ultimate root" — same guard deleteSubtree/deleteNodeOnly already enforce
+  var menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
+  function addItem(label, danger, onClick){
+    var b = document.createElement('button');
+    b.className = 'ctx-menu-item'+(danger?' danger':'');
+    b.textContent = label;
+    b.addEventListener('click', function(){ closeTreeDeleteMenu(); onClick(); });
+    menu.appendChild(b);
+  }
+  var summary = richToPlain(n.summary) || '(未命名)';
+  addItem('删除此节点（子节点保留，提升为上级）', true, function(){
+    pushUndo();
+    deleteNodeOnly(id);
+    scheduleSave();
+    renderCompactTreeView();
+    render();
+  });
+  addItem('删除此节点及全部子树', true, function(){
+    if(!confirm('删除节点"'+summary+'"及其全部子节点？此操作可用 ⌘Z 撤销。')) return;
+    pushUndo();
+    deleteSubtree(id);
+    scheduleSave();
+    renderCompactTreeView();
+    render();
+  });
+  document.body.appendChild(menu);
+  var mr = menu.getBoundingClientRect();
+  menu.style.left = Math.min(x, window.innerWidth-mr.width-10)+'px';
+  menu.style.top = Math.min(y, window.innerHeight-mr.height-10)+'px';
+  setTimeout(function(){ document.addEventListener('mousedown', closeTreeDeleteMenuOnce, {capture:true}); }, 0);
+}
+// 手机精致模式's own tree-view row long-press-drag-to-reparent, mirroring
+// desktop's attachTreeRowDrag (see its own comments for the drop-zone
+// math this copies) but driven by plain mousedown/mousemove/mouseup
+// instead of native HTML5 drag events — this sheet has no drag-and-drop
+// listeners wired up at all otherwise, and mobile Safari's native drag
+// events are unreliable/inconsistent to begin with, whereas mouse events
+// already work here (see the sheet's own swipe-to-close gesture just
+// above, which relies on the same real-touch-synthesizes-mouse-events
+// behavior). A long-press (LONG_PRESS_MS) arms the drag — a quick tap
+// still just runs the row's normal expand/collapse click — matching
+// "长按节点中心,要能拖拽到其他根节点下方".
+var ctvDragId = null;
+var ctvDropLineEl = null;
+var ctvLastDropRow = null;
+function getCtvDropLineEl(){
+  if(!ctvDropLineEl){
+    ctvDropLineEl = document.createElement('div');
+    ctvDropLineEl.className = 'ctv-drop-line';
+    compactTreeListEl.appendChild(ctvDropLineEl);
+  }
+  return ctvDropLineEl;
+}
+function clearCtvDropIndicators(){
+  compactTreeListEl.querySelectorAll('.ctv-row').forEach(function(r){ r.classList.remove('ctv-drop-inside'); delete r.dataset.dropZone; });
+  if(ctvDropLineEl) ctvDropLineEl.classList.remove('show');
+  ctvLastDropRow = null;
+}
+function attachCompactTreeRowDrag(row, id){
+  var longPressTimer = null, dragArmed = false, longPressFired = false;
+  function clearTimer(){ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; } }
+  function onMove(ev){
+    if(!dragArmed) return;
+    ev.preventDefault();
+    var overRow = document.elementFromPoint(ev.clientX, ev.clientY);
+    overRow = overRow && overRow.closest ? overRow.closest('.ctv-row') : null;
+    if(ctvLastDropRow && ctvLastDropRow!==overRow) ctvLastDropRow.classList.remove('ctv-drop-inside');
+    if(!overRow || overRow.dataset.id===ctvDragId || isDescendant(ctvDragId, overRow.dataset.id)){
+      ctvLastDropRow = null;
+      getCtvDropLineEl().classList.remove('show');
+      return;
+    }
+    ctvLastDropRow = overRow;
+    var rowTop = overRow.offsetTop, rowH = overRow.offsetHeight;
+    var localY = ev.clientY - compactTreeListEl.getBoundingClientRect().top + compactTreeListEl.scrollTop;
+    var frac = (localY-rowTop)/rowH;
+    var zone = frac<0.28 ? 'before' : (frac>0.72 ? 'after' : 'inside');
+    overRow.dataset.dropZone = zone;
+    var line = getCtvDropLineEl();
+    if(zone==='inside'){
+      line.classList.remove('show');
+      overRow.classList.add('ctv-drop-inside');
+    } else {
+      overRow.classList.remove('ctv-drop-inside');
+      line.style.top = (zone==='before' ? rowTop-1 : rowTop+rowH-1)+'px';
+      line.classList.add('show');
+    }
+  }
+  function onUp(ev){
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    clearTimer();
+    if(!dragArmed){ return; }
+    dragArmed = false;
+    row.classList.remove('ctv-dragging');
+    var dropRow = ctvLastDropRow;
+    var zone = dropRow ? dropRow.dataset.dropZone : null;
+    var dragId = ctvDragId;
+    ctvDragId = null;
+    clearCtvDropIndicators();
+    if(!dropRow || !zone) return;
+    var targetId = dropRow.dataset.id;
+    if(!dragId || targetId===dragId || isDescendant(dragId, targetId)) return;
+    var dragNode = node(dragId);
+    var targetNode = node(targetId);
+    if(!dragNode || !targetNode) return;
+    pushUndo();
+    removeFromParent(dragId);
+    dragNode.px = 0; dragNode.py = 0; dragNode.placed = false;
+    if(zone==='inside' || targetId===state.rootId){
+      dragNode.parentId = targetId;
+      targetNode.children.push(dragId);
+      targetNode.drilled = true;
+    } else {
+      var pn = parentOf(targetId) || node(state.rootId);
+      dragNode.parentId = pn.id;
+      var idx = pn.children.indexOf(targetId);
+      pn.children.splice(zone==='before'?idx:idx+1, 0, dragId);
+    }
+    selectedId = dragId;
+    scheduleSave();
+    renderCompactTreeView();
+    render();
+  }
+  row.addEventListener('mousedown', function(ev){
+    if(ev.target.closest('.ctv-tag')) return; // the badge has its own long-press (delete menu) — see attachTreeRowDrag's own tag handler
+    if(id===state.rootId) return; // the ultimate root can't be dragged (matches desktop's own drop.addEventListener guard)
+    longPressFired = false;
+    clearTimer();
+    longPressTimer = setTimeout(function(){
+      longPressFired = true;
+      dragArmed = true;
+      ctvDragId = id;
+      row.classList.add('ctv-dragging');
+    }, LONG_PRESS_MS);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+  row.addEventListener('click', function(ev){
+    // the long-press above already consumed this gesture (either armed a
+    // drag, or was cancelled by a finger-slide before firing) — suppress
+    // the plain-tap expand/collapse click that would otherwise ALSO fire
+    // right after mouseup, same pattern as the tag's own click guard.
+    // stopImmediatePropagation (not just stopPropagation) is required
+    // here specifically because the expand/collapse click listener this
+    // guards against is registered on this SAME row element, not a
+    // parent — plain stopPropagation only blocks ancestors' listeners,
+    // never sibling listeners on the identical target.
+    if(longPressFired){ ev.stopImmediatePropagation(); longPressFired = false; }
+  });
+}
 function renderCompactTreeView(){
   compactTreeListEl.innerHTML = '';
   (function walk(id, depth){
@@ -6742,6 +7079,7 @@ function renderCompactTreeView(){
     if(!n || n.category==='C') return;
     var row = document.createElement('div');
     row.className = 'ctv-row';
+    row.dataset.id = id;
     row.style.paddingLeft = (6+depth*18)+'px';
     var abKids = n.children.map(node).filter(function(c){ return c && c.category!=='C'; });
     var hasAbKids = abKids.length>0;
@@ -6753,6 +7091,7 @@ function renderCompactTreeView(){
     tag.textContent = n.category+'('+importanceOf(n)+','+n.masterLevel+')';
     tag.addEventListener('click', function(ev){
       ev.stopPropagation();
+      if(tagLongPressFired){ tagLongPressFired = false; return; } // the long-press below already handled this touch — don't ALSO jump
       // 手机精致模式's own jump semantics: the TAPPED node itself becomes
       // the global root — NOT its parent, unlike desktop's
       // makeTreeSelectionVisibleOnCanvas (kept 100% unchanged for
@@ -6770,11 +7109,36 @@ function renderCompactTreeView(){
       resyncRootView();
       closeCompactTreeSheet();
     });
+    // "长按节点左边 A(1,1) 部分,底下弹出提示支持删除节点和全部子树" —
+    // long-pressing the badge (not the row body, which is the drag/tap-to-
+    // collapse target below) opens a delete menu instead of jumping.
+    // tagLongPressFired suppresses the tag's own click handler above,
+    // which otherwise fires right after mouseup/touchend on release —
+    // same "long-press consumed the tap" pattern compactNodeMousedown
+    // already uses for canvas nodes.
+    (function(){
+      var timer = null;
+      function clear(){ if(timer){ clearTimeout(timer); timer = null; } }
+      tag.addEventListener('mousedown', function(ev){
+        ev.stopPropagation();
+        var x = ev.clientX, y = ev.clientY;
+        timer = setTimeout(function(){
+          tagLongPressFired = true;
+          openTreeDeleteMenu(x, y, id);
+        }, LONG_PRESS_MS);
+      });
+      tag.addEventListener('mouseup', clear);
+      tag.addEventListener('mouseleave', clear);
+    })();
     row.appendChild(tag);
     var summary = document.createElement('span');
     summary.className = 'ctv-summary';
     summary.textContent = richToPlain(n.summary) || '(未命名)';
     row.appendChild(summary);
+    // registered BEFORE the expand/collapse click handler below so its
+    // own click-suppression (after a completed long-press-drag) runs
+    // first — click listeners fire in registration order.
+    attachCompactTreeRowDrag(row, id);
     row.addEventListener('click', function(){
       // "点击节点中心将会展开和折叠孩子节点" — tapping the row BODY (not
       // the tag) only ever toggles drilled; it never changes focus/root.
