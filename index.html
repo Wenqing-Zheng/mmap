@@ -788,6 +788,17 @@
   }
   .compact-btn svg{width:55%;height:55%;}
   .compact-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  /* 🖐️'s 3 armed speed states — "不同的三种速度颜色不一样,速度越快蓝色
+     越深". Kept as separate classes (not a single .active reused across
+     all three) specifically so each speed reads as visually distinct at
+     a glance, not just via the button's tooltip/title text. Fixed blue
+     hues regardless of the active theme's own --accent, since the
+     speed-darkness mapping itself ("越快越深") is the whole point of
+     this and would be lost if a theme's accent happened to be, say,
+     yellow (hicontrast) or gray (graphite). */
+  .compact-btn.cbdrag-mid{background:#5b8dff;color:#fff;border-color:#5b8dff;}
+  .compact-btn.cbdrag-fast{background:#1a3fc4;color:#fff;border-color:#1a3fc4;}
+  .compact-btn.cbdrag-slow{background:#aac4ff;color:#12295c;border-color:#aac4ff;}
   /* search+tree cluster: "tree view按钮放在搜索按钮正下方" — same
      stacked-pair pattern as .compact-nav-cluster's own up/down pairing,
      just a single column instead of nav-cluster's extra spanning-column
@@ -1038,7 +1049,7 @@
       <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
       <button class="compact-btn" id="cbAddToInbox" title="新建节点到 1 号收纳节点">✳️</button>
       <button class="compact-btn" id="cbMakeRoot" title="以最近选中的节点为根节点视图（等价双击）">🟧</button>
-      <button class="compact-btn" id="cbMore" title="更多">
+      <button class="compact-btn" id="cbMore" title="更多" style="margin-left:auto;">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
       </button>
     </div>
@@ -2903,7 +2914,54 @@ function applyFrameStyle(nodeEl, frameEl, n, w, h, shape){
   if(w>0 && h>0) el.appendChild(buildBorderSvg(w, h, shape, cornerR, n, border));
 }
 
+// "下方按钮全部失去功能...卡死的状态:按钮还是会按下去时候的闪烁效果,但是
+// 就是没有功能...做一个刷新机制,保证下方按钮不要因为某个机制卡死" — every
+// button handler in this file ends by calling render(), so if render()
+// itself ever throws — a corrupted node graph, a cyclic parent/child
+// reference, anything unexpected in buildContainerTree's recursion —
+// that exception propagates all the way out of whichever handler was
+// running and is simply swallowed by the browser: the click DID
+// register (hence the native :active flash still firing), but the
+// handler's real work never finished, and since nothing about the
+// underlying (broken) state changed, the NEXT click throws the exact
+// same way — reads exactly as "every button looks pressed but does
+// nothing, permanently, until a manual page refresh". render() (the
+// name every one of this file's ~140 call sites already uses) is now
+// this watchdog wrapper; the actual drawing logic moved to renderImpl.
+// On the FIRST failure it pops the undo stack (rolling back to
+// whatever state existed right before the action that broke it — the
+// same rollback ⌘Z performs, just automatic) and retries once; a
+// corrupted node graph is virtually always something a recent action
+// just introduced, so the very next entry on the undo stack is almost
+// always healthy. If that retry ALSO throws (truly unrecoverable
+// state, or an empty undo stack), it gives up rather than looping
+// forever, logging to the console instead of a UI alert so a single
+// bad render doesn't itself become a NEW blocking interaction.
+var renderRecoveryInProgress = false;
 function render(){
+  try{
+    renderImpl();
+  }catch(err){
+    console.error('render() failed, attempting automatic recovery via undo:', err);
+    if(renderRecoveryInProgress || !undoStack.length){
+      renderRecoveryInProgress = false;
+      throw err;
+    }
+    renderRecoveryInProgress = true;
+    try{
+      var snap = JSON.parse(undoStack.pop());
+      state.nodes = snap.nodes;
+      state.rootId = snap.rootId;
+      if(!state.nodes[state.focusId]) state.focusId = state.rootId;
+      if(selectedId && !state.nodes[selectedId]) selectedId = state.focusId;
+      scheduleSave();
+      renderImpl();
+    } finally {
+      renderRecoveryInProgress = false;
+    }
+  }
+}
+function renderImpl(){
   stage.innerHTML='';
   autoFitScale = 1;
   crowdScaleMap = {};
@@ -3076,7 +3134,7 @@ function childrenGroupBBox(parentId){
    px/py is read for anything except measuring the bbox. */
 function recomputeCompactChildrenView(parentId, viewportW, viewportH){
   // while a direct child of THIS group is being actively dragged
-  // (compactDragModeOn's ✋ pan/resize gesture), that child's OWN px/py is
+  // (compactDragMode's ✋ pan/resize gesture), that child's OWN px/py is
   // changing every single onMove frame — which changes the group's bbox —
   // which would otherwise recompute a NEW scale/offset here every frame
   // too. startNodeDrag's dragScale is captured ONCE at drag-start and
@@ -3411,8 +3469,29 @@ function buildContainerTree(n, isRoot){
       var gbbox = childrenGroupBBox(n.id);
       if(gbbox){
         layer.style.transformOrigin = (natW/2 + gbbox.cx)+'px '+(natH/2 + gbbox.cy)+'px';
+        // CSS translate() always shifts every point by the same delta
+        // regardless of transform-origin — only scale()/rotate() are
+        // anchored at the origin. So without subtracting gbbox.cx/cy
+        // here, the group's own bbox-CENTER point renders at
+        // (transform-origin + offsetX/Y) = mother's-center + gbbox.cx/cy
+        // + offsetX/Y, not at mother's-center + offsetX/Y as intended —
+        // off by exactly however far the bbox center sits from the
+        // mother's own local origin. That gap is ~0 for a typical ring-
+        // placed layout (symmetric around the origin by construction),
+        // which is why this stayed invisible until now, but ⭕️'s
+        // symmetrizeChildrenOf only makes child POSITIONS symmetric, not
+        // the resulting bbox — two differently-sized siblings (e.g. one
+        // drilled child next to a plain leaf) land at symmetric centers
+        // but an off-center bbox, and the whole children-layer then
+        // renders shifted by that exact drift: small drift clips a
+        // border, a large one (an expanded/nested child) pushes
+        // everything off-screen entirely — "⭕️按下后...所有文字跑的看不见
+        // 了...节点往左偏,边框溢出了". 🎯 only "fixed" this by construction
+        // (it explicitly re-centers real px/py, incidentally zeroing
+        // gbbox.cx/cy) — subtracting it directly here fixes the root
+        // cause instead of relying on a different button's side effect.
         layer.style.transform =
-          'translate('+compactChildrenView.offsetX+'px,'+compactChildrenView.offsetY+'px) '+
+          'translate('+(compactChildrenView.offsetX-gbbox.cx)+'px,'+(compactChildrenView.offsetY-gbbox.cy)+'px) '+
           'scale('+compactChildrenView.scale+')';
       }
     }
@@ -3707,7 +3786,7 @@ function nodeMousedown(ev, el, n){
     // importance/size/color/border gesture, and would swallow the pan
     // gesture canvasWrap's own mousedown listener is supposed to run.
     if(n.id===state.focusId){
-      startCompactGroupPan(ev);
+      startCompactGroupPan(ev, n);
       return;
     }
     // "🖐️还是有问题,无法合理拖拽...取消触摸拖拽的功能" — a real single-
@@ -3715,12 +3794,13 @@ function nodeMousedown(ev, el, n){
     // tap/long-press instead of a clean drag (see the touch-bridge
     // dispatching synthetic mouse events at the top of this file — a
     // continuous drag gesture is inherently harder to keep in sync that
-    // way than a single discrete tap is). compactDragModeOn no longer
-    // intercepts the tap here at all; while it's armed, a tap on a direct
-    // child just falls through to the normal compactNodeMousedown tap
-    // vocabulary below (selecting/cycling it exactly as if drag mode were
-    // off), and the ⬅️⬆️⬇️➡️ buttons move whatever that leaves selected —
-    // see their own click handlers, gated on compactDragModeOn.
+    // way than a single discrete tap is). compactDragMode no longer
+    // intercepts the tap here at all; while it's armed (!=='off'), a tap
+    // on a direct child just falls through to the normal
+    // compactNodeMousedown tap vocabulary below (selecting/cycling it
+    // exactly as if drag mode were off), and the ⬅️⬆️⬇️➡️ buttons move
+    // whatever that leaves selected — see their own click handlers,
+    // gated on compactDragMode.
     compactNodeMousedown(ev, el, n);
     return;
   }
@@ -4684,7 +4764,7 @@ function minScaleForFit(){
 canvasWrap.addEventListener('mousedown', function(e){
   if(mobileDrag.node){ mobileDragMoveTo(e.clientX, e.clientY); return; }
   if(e.target.closest('.mm-node')) return;
-  if(isCompactMode()){ startCompactGroupPan(e); return; }
+  if(isCompactMode()){ startCompactGroupPan(e, node(state.focusId)); return; }
   if(e.shiftKey){ toggleCategoryEditMode(); return; }
   if(e.metaKey) return; // ⌘+click on blank canvas is a no-op (nothing under the cursor to act on)
   selectedId = null;
@@ -4695,21 +4775,34 @@ canvasWrap.addEventListener('mousedown', function(e){
    无限制滚动,而是只在子节点group底端超出屏幕时,才支持向下滚动到显示出来
    完整的子节点". A tap with no real movement still falls through to a
    plain deselect, matching blank-canvas click's normal behavior, since
-   didPan only flips true once the pointer has actually moved. */
-function startCompactGroupPan(ev){
-  if(!compactChildrenView.axis){
-    // nothing to pan (group already fits both axes) — same as a normal
-    // blank-canvas click.
-    selectedId = null; render();
-    return;
-  }
+   didPan only flips true once the pointer has actually moved.
+   A LONG press (whether or not the group even has an axis to pan) opens
+   the root's own edit dialog instead — "叶子节点全屏显示为根节点...长按
+   画面...弹出信息编辑页面...有子节点的情况下,长按空白区域(可见区域根
+   节点)也要弹出根节点的信息编辑页面". This covers both a childless leaf
+   root (which has no visible frame of its own to long-press ON — the
+   compact-root-hide-frame class hides it — so the only way to reach it
+   at all is a blank-area long-press) and a root WITH children, long-
+   pressed on the blank margin around them rather than on any specific
+   child. */
+function startCompactGroupPan(ev, rootNode){
   var startX=ev.clientX, startY=ev.clientY;
   var startOffX=compactChildrenView.offsetX, startOffY=compactChildrenView.offsetY;
+  var canPan = !!compactChildrenView.axis; // no axis -> nothing TO pan, but the long-press-edit below must still work
   var didPan = false;
+  var longPressTimer = null, longPressFired = false;
+  function clearLongPress(){ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; } }
+  longPressTimer = setTimeout(function(){
+    longPressFired = true;
+    openInsertDialog({mode:'edit', node:rootNode});
+  }, LONG_PRESS_MS);
   function onMove(e){
+    if(longPressFired) return; // openInsertDialog already took over
     var dx=e.clientX-startX, dy=e.clientY-startY;
     if(!didPan && Math.abs(dx)+Math.abs(dy)<4) return;
+    if(!didPan) clearLongPress(); // a real drag starting cancels the pending long-press-edit, same as compactNodeMousedown's own onMove guard
     didPan = true;
+    if(!canPan) return; // no axis to actually pan along — the movement above only served to cancel the long-press
     var vis = visibleCanvasRect();
     if(compactChildrenView.axis==='x') compactChildrenView.offsetX = startOffX+dx;
     else compactChildrenView.offsetY = startOffY+dy;
@@ -4719,6 +4812,8 @@ function startCompactGroupPan(ev){
   function onUp(){
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
+    clearLongPress();
+    if(longPressFired) return; // openInsertDialog already took over
     if(!didPan){ selectedId = null; render(); }
   }
   window.addEventListener('mousemove', onMove);
@@ -6694,42 +6789,74 @@ var compactRelaxSliderEl = document.getElementById('compactRelaxSlider');
 // deleted while sitting on the stack is silently skipped rather than
 // crashing ⬇️.
 var compactNavStack = [];
+var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge at 中速 (mult=1) without needing dozens of taps to cross a sibling gap
 // "🖐️还是有问题,无法合理拖拽...取消触摸拖拽的功能。修改为用方向键拖拽" —
 // 🖐️ no longer arms a touch-drag (see nodeMousedown's own compact-mode
 // routing above, which now always falls through to the plain tap
 // vocabulary regardless of this flag). Armed, it repurposes the
 // ⬅️⬆️⬇️➡️ buttons (see their own click handlers below, each gated on
-// this flag) to nudge currentSelectedNode()'s px/py by COMPACT_MOVE_STEP
-// instead of navigating the focus root/siblings; a second 🖐️ tap
-// disarms it and restores their normal navigation meaning.
-var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge without needing dozens of taps to cross a sibling gap
-var compactDragModeOn = false;
+// compactDragMode!=='off') to nudge currentSelectedNode()'s px/py by
+// COMPACT_MOVE_STEP*that speed's multiplier instead of navigating the
+// focus root/siblings.
+//
+// 4-state cycle "off → 中速 → 快速 → 慢速 → off" (default off) — NOT a
+// plain on/off toggle anymore. Each tap normally just advances to the
+// next state in that fixed order. The ONE exception: the moment an
+// arrow button actually consumes the CURRENT armed state to move a node
+// (compactDragConsumed set true — see compactMoveSelected), the *next*
+// 🖐️ tap short-circuits straight to 'off' instead of continuing the
+// cycle — "一旦按动某次(方向键),下一次按动了...🖐️就表示切换到off". A 🖐️
+// tap that DIDN'T follow an actual move (e.g. armed then immediately
+// tapped again with no drag in between) still just advances normally,
+// since compactDragConsumed only ever gets set by compactMoveSelected
+// itself.
+var COMPACT_DRAG_SPEEDS = ['off', 'mid', 'fast', 'slow'];
+var COMPACT_DRAG_MULT = {mid:1, fast:5, slow:1/5};
+var compactDragMode = 'off';
+var compactDragConsumed = false;
 var cbDragToggleEl = document.getElementById('cbDragToggle');
+function refreshCbDragToggleUI(){
+  cbDragToggleEl.classList.remove('active', 'cbdrag-mid', 'cbdrag-fast', 'cbdrag-slow');
+  if(compactDragMode!=='off') cbDragToggleEl.classList.add('cbdrag-'+compactDragMode);
+  cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：中速→快速→慢速）'
+    : '拖拽平移中（'+({mid:'中速', fast:'快速', slow:'慢速'})[compactDragMode]+'）：点击切换下一速度，或移动一次节点后再点击关闭';
+}
 cbDragToggleEl.addEventListener('click', function(){
-  compactDragModeOn = !compactDragModeOn;
-  cbDragToggleEl.classList.toggle('active', compactDragModeOn);
+  if(compactDragConsumed){
+    // an arrow press already consumed the current speed since the last
+    // 🖐️ tap — this tap means "stop", not "advance to the next speed".
+    compactDragMode = 'off';
+  } else {
+    var idx = COMPACT_DRAG_SPEEDS.indexOf(compactDragMode);
+    compactDragMode = COMPACT_DRAG_SPEEDS[(idx+1) % COMPACT_DRAG_SPEEDS.length];
+  }
+  compactDragConsumed = false;
+  refreshCbDragToggleUI();
 });
+refreshCbDragToggleUI();
 // shared by all four arrow buttons while move-mode is armed: nudges
-// currentSelectedNode() by (dx,dy) unit-scaled by COMPACT_MOVE_STEP. Only
-// a direct child of the current focus root is actually draggable in this
-// mode (mirrors the OLD touch-drag's own "母节点和二级子节点不可操控"
-// restriction) — moving the focus root itself is meaningless (it's
-// invisible/frameless and always re-centered, see compact-root-hide-
-// frame), and a grandchild+ isn't a rigid-group member this view's own
-// bbox/scale math is centered against.
+// currentSelectedNode() by (dx,dy) unit-scaled by COMPACT_MOVE_STEP times
+// the current speed's multiplier. Only a direct child of the current
+// focus root is actually draggable in this mode (mirrors the OLD touch-
+// drag's own "母节点和二级子节点不可操控" restriction) — moving the focus
+// root itself is meaningless (it's invisible/frameless and always
+// re-centered, see compact-root-hide-frame), and a grandchild+ isn't a
+// rigid-group member this view's own bbox/scale math is centered against.
 function compactMoveSelected(dx, dy){
   var n = currentSelectedNode();
   if(!n || n.parentId!==state.focusId) return;
   pushUndo();
-  n.px += dx*COMPACT_MOVE_STEP;
-  n.py += dy*COMPACT_MOVE_STEP;
+  var mult = COMPACT_DRAG_MULT[compactDragMode] || 1;
+  n.px += dx*COMPACT_MOVE_STEP*mult;
+  n.py += dy*COMPACT_MOVE_STEP*mult;
+  compactDragConsumed = true; // arms the next 🖐️ tap to go straight to 'off' instead of advancing
   scheduleSave(); render();
 }
 
 cbSearchEl.addEventListener('click', function(){ btnSearch.click(); });
 cbTreeEl.addEventListener('click', function(){ openCompactTreeSheet(); });
 cbNavUpEl.addEventListener('click', function(){
-  if(compactDragModeOn){ compactMoveSelected(0, -1); return; }
+  if(compactDragMode!=='off'){ compactMoveSelected(0, -1); return; }
   // "只能可见区域往上跳跃一级,而不是直接到全局根节点" — moves the visible
   // root to its own immediate parent (NOT all the way to state.rootId).
   // At state.rootId itself there IS no parent, so this is a no-op there,
@@ -6744,7 +6871,7 @@ cbNavUpEl.addEventListener('click', function(){
   scheduleSave(); render();
 });
 cbNavDownEl.addEventListener('click', function(){
-  if(compactDragModeOn){ compactMoveSelected(0, 1); return; }
+  if(compactDragMode!=='off'){ compactMoveSelected(0, 1); return; }
   // pops compactNavStack and returns to whatever node ⬆️ most recently
   // left — skipping (not crashing on) any popped id whose node has since
   // been deleted, so a single stale entry can't wedge every ⬇️ press
@@ -6763,7 +6890,7 @@ cbNavDownEl.addEventListener('click', function(){
   scheduleSave(); render();
 });
 cbNavSiblingEl.addEventListener('click', function(){
-  if(compactDragModeOn){ compactMoveSelected(1, 0); return; }
+  if(compactDragMode!=='off'){ compactMoveSelected(1, 0); return; }
   var curId = state.focusId;
   var pn = parentOf(curId);
   if(!pn || pn.children.length<2) return;
@@ -6778,7 +6905,7 @@ cbNavSiblingEl.addEventListener('click', function(){
 // ⬅️ mirrors ➡️ exactly but cycles to the PREVIOUS sibling instead of the
 // next one — "高度和➡️对称,功能一样,只不过是相反方向切换孩子".
 cbNavPrevSiblingEl.addEventListener('click', function(){
-  if(compactDragModeOn){ compactMoveSelected(-1, 0); return; }
+  if(compactDragMode!=='off'){ compactMoveSelected(-1, 0); return; }
   var curId = state.focusId;
   var pn = parentOf(curId);
   if(!pn || pn.children.length<2) return;
