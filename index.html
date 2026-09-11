@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>空间思维导图</title>
+<title>思维导图</title>
 <style>
   :root{
     --rail-w:64px;
@@ -204,12 +204,28 @@
     transform:translateX(calc(-1*(var(--rail-w) + 280px)));transition:transform .16s ease;display:flex;flex-direction:column;
   }
   #searchFlyout.open{transform:translateX(0);}
-  #searchFlyout .sf-head{padding:16px 14px 10px;}
+  #searchFlyout .sf-head{padding:16px 14px 10px;display:flex;align-items:center;gap:8px;}
   #searchInput{
     width:100%;height:34px;border-radius:10px;border:1px solid var(--panel-border);background:var(--bg);
     color:var(--text-main);padding:0 12px;font-size:13px;outline:none;
   }
   #searchInput:focus{border-color:var(--accent);}
+  /* "搜索框右边应该有个蓝色的取消可以退出本次搜索...一旦按了搜索框却没有
+     搜索,就卡死了" — desktop's rail flyout already closes on any outside
+     click (see the document-level mousedown listener's own #rail
+     exclusion), but 手机精致模式's version of this panel is a bottom
+     sheet layered ABOVE #compactBar (z-index:850 vs #compactBar's own
+     lower stacking), so tapping anywhere inside the sheet's own blank
+     area — which is most of a phone screen with zero results showing —
+     never reaches that outside-click listener at all, and there was no
+     OTHER visible way to leave: no back arrow (unlike compactTreeSheet's
+     own ‹), Esc is a hardware-keyboard-only key with no on-screen
+     equivalent on a touchscreen. Hidden entirely on desktop (only shown
+     under mobile-compact-mode below) — desktop's own click-outside-to-
+     close already works fine there and never needed this.
+     */
+  #searchCancelBtn{display:none;flex-shrink:0;color:var(--accent);font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;}
+  html.mobile-compact-mode #searchCancelBtn{display:block;}
   #searchResults{flex:1;overflow:auto;padding:6px 8px;}
   .sr-item{padding:9px 10px;border-radius:8px;cursor:pointer;font-size:12.5px;color:var(--text-main);margin-bottom:2px;}
   .sr-item:hover, .sr-item.sr-active{background:rgba(120,130,160,.14);}
@@ -693,24 +709,25 @@
      UI layered on top of the SAME #app/#canvasWrap/#rail markup — "像一款
      精心设计界面简洁美观的原生app". #rail itself, #mobileToolbar, and
      every desktop/手机原始 flyout are simply hidden outright under this
-     class (compact mode has its own #compactBar/#compactMoreSheet/
-     #compactTreeSheet instead), so nothing about the OTHER two modes'
+     class (compact mode has its own #compactBar/#compactTreeSheet
+     instead), so nothing about the OTHER two modes'
      rendering can be perturbed by anything below — every rule here is
      scoped under html.mobile-compact-mode and touches only compact-mode's
      own new elements or #canvasWrap's outer layout slot.
      Icon/font sizing throughout uses clamp()+vw so it "自动适配手机屏幕"
      across phone widths without a separate breakpoint per device. ============================================================ */
-  #compactBar, #compactMoreSheet, #compactTreeSheet, #compactSearchSheet, #compactRootLabel{display:none;}
+  #compactBar, #compactTreeSheet, #compactSearchSheet, #compactRootLabel{display:none;}
   html.mobile-compact-mode #rail, html.mobile-compact-mode #mobileToolbar,
   html.mobile-compact-mode #treeFlyout, html.mobile-compact-mode #randomFlyout{
     display:none;
   }
-  /* #searchFlyout and #paramsFlyout are REUSED as-is (their bottom-sheet
-     CSS already applies under html.mobile-mode above) — cbSearch/
-     cbMoreParams simply forward clicks to the existing btnSearch/
-     btnParams rail buttons (see the compact-bar JS wiring), so their full
-     desktop logic (search-as-you-type, live param controls) works
-     unmodified instead of being duplicated for a third time. */
+  /* #searchFlyout is REUSED as-is (its bottom-sheet CSS already applies
+     under html.mobile-mode above) — cbSearch simply forwards clicks to
+     the existing btnSearch rail button (see the compact-bar JS wiring),
+     so its full desktop logic (search-as-you-type) works unmodified
+     instead of being duplicated for a third time. #paramsFlyout has NO
+     compact-mode entry point at all — "手机精致模式不开放...布局参数
+     按钮,字体大小按钮" — desktop's own #rail keeps it unchanged. */
   html.mobile-compact-mode #searchFlyout, html.mobile-compact-mode #paramsFlyout{
     left:0;right:0;top:auto;bottom:0;width:100%;height:56vh;max-height:56vh;
     border-right:none;border-top:1px solid var(--panel-border);border-radius:14px 14px 0 0;
@@ -745,7 +762,7 @@
   html.mobile-compact-mode #compactRootLabel{
     display:block;position:absolute;top:8%;left:0;right:0;
     text-align:center;padding:0 8%;font-size:clamp(15px,4vw,19px);font-weight:700;
-    color:var(--text-main);pointer-events:none;z-index:5;
+    color:var(--text-main);z-index:5;
     /* "长文本...按下🟧切为根节点视角以后,会突出屏幕" — this was
        display:flex with justify-content:center, whose flex-item text
        child defaults to min-width:auto (effectively "never wrap, stay
@@ -754,15 +771,23 @@
        wrapping — the font itself was never actually growing, the text
        simply refused to break. display:block (needing no
        justify-content — text-align:center + the existing left:0;right:0
-       already center it) plus explicit wrapping below fixes that; the
-       max-height+overflow pair then caps a truly enormous summary at a
-       fixed number of visible lines rather than pushing #compactBar
-       around or bleeding past the bottom of the label's own reserved
-       band, same "never overflow, never resize surrounding chrome"
-       contract every other long-text spot in this file already keeps.
+       already center it) plus explicit wrapping below fixes that.
+       "summary有换行且极长的文本框...背景墙上的文字会看不见换行,且截断" —
+       white-space:pre-wrap (not `normal`, which collapses the real \n
+       characters updateCompactRootChrome's richToPlain already produces
+       from <br> tags) keeps authored line breaks AND still wraps long
+       unbroken runs; overflow-y:auto (not the old overflow:hidden, which
+       just chopped anything past max-height with no way to see the
+       rest) lets a summary taller than the reserved band scroll instead
+       of being silently cut off — "先试图占满屏幕,然后如果还没显示完,
+       则继续支持背景墙滑动滚动功能". pointer-events is no longer :none
+       (needed for that scroll to actually respond to touch/drag) — safe
+       here since this element's own box is bounded to the reserved
+       top-8%-to-max-height band, not the full canvas, so it only
+       intercepts taps that would have landed on ITS OWN text anyway.
        */
-    overflow-wrap:break-word;word-break:break-word;white-space:normal;
-    max-height:34vh;overflow:hidden;line-height:1.3;
+    overflow-wrap:break-word;word-break:break-word;white-space:pre-wrap;
+    max-height:34vh;overflow-y:auto;line-height:1.3;
   }
   /* one-shot "zoom in" entrance for the NEW root element right after a
      pinch-to-go-up gesture — see render()'s own pendingPinchZoomAnim
@@ -893,35 +918,45 @@
   #compactRelaxLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
   #compactRelaxSlider{width:100%;accent-color:var(--accent);}
 
-  /* "二等公民" overflow sheet — every button the compact bar itself has no
-     room for (params/theme/import-export/fit/reset-position/mode-switch)
-     lives here instead, opened via cbMore. Bottom sheet, same slide-up
-     language as the "手机原始模式" flyouts already use. */
-  html.mobile-compact-mode #compactMoreSheet{
-    display:flex;flex-direction:column;position:fixed;left:0;right:0;bottom:0;
-    height:60vh;max-height:60vh;background:var(--panel-bg);
-    border-top:1px solid var(--panel-border);border-radius:14px 14px 0 0;
-    box-shadow:var(--shadow);z-index:900;transform:translateY(100%);
-    transition:transform .18s ease;
+  /* "去掉控件第一排最右边的...按钮,把里面的按钮全部放到底下向上拖拽出来的
+     区域" — replaces the old cbMore-button + separate compactMoreSheet
+     bottom-sheet entirely. #compactBarExpand sits INSIDE #compactBar
+     itself (not a separate fixed-position overlay) with height:0 by
+     default — collapsed, it takes no visible space at all, so
+     #compactBar's own always-visible rows 1-3 sit exactly where they
+     always did. Dragging #compactBarHandle up animates max-height from 0
+     to its natural content height, pushing #compactBar (and therefore
+     #canvasWrap, which shares #compactBar's own flex parent) taller —
+     "向上拖拽" is a real drag on this ONE handle, not a swipe-anywhere
+     gesture, so it can never fire by accident the way the old outside-
+     click-closes-panel logic did for other sheets. */
+  #compactBarHandle{
+    display:flex;align-items:center;justify-content:center;
+    height:18px;flex-shrink:0;cursor:grab;touch-action:none;
   }
-  html.mobile-compact-mode #compactMoreSheet.open{transform:translateY(0);}
-  #compactMoreHead{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:clamp(10px,3vw,14px);font-size:clamp(12px,3vw,14px);font-weight:700;
-    color:var(--text-main);border-bottom:1px solid var(--panel-border);flex-shrink:0;
+  #compactBarHandle.dragging{cursor:grabbing;}
+  #compactBarHandleBar{
+    width:36px;height:4px;border-radius:2px;background:var(--panel-border);
   }
-  #compactMoreClose{cursor:pointer;color:var(--text-dim);font-size:clamp(14px,3.6vw,17px);}
-  #compactMoreGrid{
-    display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,2.4vw,12px);
-    padding:clamp(10px,3vw,14px);overflow-y:auto;
+  #compactBarExpand{
+    max-height:0;overflow:hidden;flex-shrink:0;
+    transition:max-height .18s ease;
   }
-  .compact-more-btn{
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-    aspect-ratio:1;border-radius:clamp(8px,2vw,12px);border:1px solid var(--panel-border);
-    background:var(--bg);color:var(--text-main);cursor:pointer;
-    font-size:clamp(9px,2.2vw,11px);font-weight:600;line-height:1.3;
+  /* transition only while NOT actively being dragged — a live drag sets
+     max-height directly on every pointer move (see the JS below) and a
+     .18s transition fighting that every frame is what would make the
+     drag feel laggy/rubber-banded instead of 1:1 with the finger; the
+     transition comes back for the SNAP-to-open-or-closed settle once the
+     finger lifts. */
+  #compactBarExpand.dragging{transition:none;}
+  #compactBarRow4, #compactBarRow5, #compactBarRow6{
+    display:flex;align-items:center;gap:clamp(6px,2vw,10px);
+    padding-top:clamp(3px,1vw,6px);
   }
-  .compact-more-btn:active{background:rgba(120,130,160,.14);}
+  .compact-btn-wide{
+    width:auto;flex:1;gap:6px;font-size:clamp(12px,3vw,14px);font-weight:600;padding:0 10px;
+  }
+
 
   /* compact-mode tree view: near-fullscreen sheet (not the 60vh "more"
      sheet height — a tree needs to show as many rows as possible) sliding
@@ -942,13 +977,56 @@
     padding:clamp(10px,3vw,14px);font-size:clamp(12px,3vw,14px);font-weight:700;
     color:var(--text-main);border-bottom:1px solid var(--panel-border);
   }
-  #compactTreeBack{cursor:pointer;font-size:clamp(18px,4.4vw,22px);font-weight:700;color:var(--text-dim);}
+  /* "点开树视图后...最右边添加一个按钮'挪动'" — a toggle, not a momentary
+     action: gray/idle by default, turns red the moment it's armed (see
+     cbTreeMoveToggleEl's own JS for exactly which actions also disarm
+     it — a second tap, closing the sheet, or a badge-tap jump all count
+     as "什么都不操作...直接取消"). margin-left:auto pushes it to the
+     header's own far right without needing a separate flex wrapper. */
+  #cbTreeMoveToggle{
+    margin-left:auto;flex-shrink:0;cursor:pointer;font-weight:700;
+    font-size:clamp(11px,2.8vw,13px);padding:5px 10px;border-radius:8px;
+    background:rgba(120,130,160,.14);color:var(--text-dim);
+  }
+  #cbTreeMoveToggle.active{background:#d1495b;color:#fff;}
+  /* "tree view左上角那个退出按钮‹,不好触发太小了,放大3倍" — the OLD
+     rule sized only the glyph itself (font-size), leaving its actual tap
+     target exactly as small as the "‹" character's own glyph box — easy
+     to miss on a phone. 3x both the font-size AND give it real
+     padding/min-width/min-height so the enlarged glyph has an
+     enlarged HIT AREA around it too, not just a bigger character
+     floating in the same tiny box. display:inline-flex + centering
+     keeps the now-larger glyph visually centered within that bigger box
+     instead of sitting in a corner. */
+  #compactTreeBack{
+    cursor:pointer;font-size:clamp(54px,13.2vw,66px);font-weight:700;color:var(--text-dim);
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:44px;min-height:44px;line-height:1;
+  }
   #compactTreeList{flex:1;overflow-y:auto;padding:6px;position:relative;}
   .ctv-row{
     display:flex;align-items:center;gap:8px;padding:clamp(7px,2vw,10px) clamp(6px,2vw,10px);
     border-radius:9px;cursor:pointer;font-size:clamp(12px,3vw,14px);color:var(--text-main);
   }
   .ctv-row:active{background:rgba(120,130,160,.14);}
+  /* "挪动"模式下每行右侧出现的3个按钮 — "选择"(蓝)/"孩子"(绿)/"兄弟"(绿).
+     margin-left:auto on the FIRST of the three pushes all three flush to
+     the row's own right edge without disturbing .ctv-summary's own
+     flex:1/ellipsis behavior to its left. */
+  .ctv-move-btn{
+    flex-shrink:0;font-size:clamp(10px,2.4vw,11px);font-weight:700;color:#fff;
+    padding:4px clamp(6px,1.8vw,9px);border-radius:7px;cursor:pointer;
+  }
+  /* "按下任何一行的选择,其他所有选择都变灰色" — the PICKED row's own
+     选择 button stays blue (ctv-move-picked below); every OTHER row's
+     选择 button dims to gray instead — this is what visually says "a
+     source is now armed, tap 孩子/兄弟 on your target" without needing
+     separate instructional text. Before any pick, every row's 选择 is
+     the same blue, all equally available. */
+  .ctv-move-btn.ctv-move-pick{background:#4361ee;margin-left:auto;}
+  .ctv-move-btn.ctv-move-pick.ctv-move-dimmed{background:#9aa0ad;}
+  .ctv-move-btn.ctv-move-pick.ctv-move-picked{background:#4361ee;box-shadow:0 0 0 2px #fff, 0 0 0 3.5px #4361ee;}
+  .ctv-move-btn.ctv-move-child, .ctv-move-btn.ctv-move-sibling{background:#2ea88a;}
   /* long-press-drag-to-reparent visuals, mirroring desktop's own
      .tv-drop-line/.tv-row.tv-drop-inside/.tv-row.tv-dragging exactly (see
      attachTreeRowDrag) — "拖拽到其他根节点下方,就像电脑版一样,有一个虚线和
@@ -1066,48 +1144,65 @@
       <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
       <button class="compact-btn" id="cbAddToInbox" title="新建节点到未归纳节点">✳️</button>
       <button class="compact-btn" id="cbMakeRoot" title="以最近选中的节点为根节点视图（等价双击）">🟧</button>
-      <button class="compact-btn" id="cbMore" title="更多" style="margin-left:auto;">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
-      </button>
     </div>
     <div id="compactBarRow2">
-      <div id="compactDepthCtl" title="默认最大可视深度">
-        <div id="compactDepthMinus">‹</div>
-        <div id="compactDepthValue">2</div>
-        <div id="compactDepthPlus">›</div>
-      </div>
       <button class="compact-btn" id="cbDragToggle" title="拖拽平移：开启后可拖动一级子节点">✋</button>
       <div id="compactRandomZone"></div>
       <button class="compact-btn" id="cbCenterVisibleChildren" title="把当前可见区域根节点的一级孩子整体平移到居中位置">🎯</button>
       <button class="compact-btn" id="cbResetVisibleSizes" title="重置当前可见区域一级子节点的位置、大小和相对排版">⭕️</button>
+      <button class="compact-btn" id="cbRandomizeVisibleStyle" title="随机打乱当前可见区域一级子节点的颜色和边框">🌈</button>
     </div>
     <div id="compactBarRow3">
       <span id="compactRelaxLabel">防碰撞强度</span>
       <input type="range" id="compactRelaxSlider" min="0" max="100" step="1">
     </div>
-  </div>
-
-  <div id="compactMoreSheet">
-    <div id="compactMoreHead">其他功能<span id="compactMoreClose">✕</span></div>
-    <div id="compactMoreGrid">
-      <button class="compact-more-btn" id="cbMoreParams">⚙<br>布局参数</button>
-      <button class="compact-more-btn" id="cbMoreTheme">🎨<br>切换主题</button>
-      <button class="compact-more-btn" id="cbMoreImport">🚢<br>导入 JSON</button>
-      <button class="compact-more-btn" id="cbMoreExport">🚁<br>导出 JSON</button>
-      <button class="compact-more-btn" id="cbMoreFit">⛩<br>回到全局</button>
-      <button class="compact-more-btn" id="cbMoreResetAll">💣<br>全树重排</button>
-      <button class="compact-more-btn" id="cbMoreDesktop">🖥<br>返回电脑模式</button>
-      <button class="compact-more-btn" id="cbMoreRaw">📱<br>手机原始模式</button>
+    <!-- "拖拽可见区域" — a drag-up-to-reveal extension of #compactBar
+         itself (see #compactBarHandle's own JS for the drag gesture),
+         replacing the old separate cbMore-button + compactMoreSheet
+         bottom-sheet entirely — "去掉控件第一排最右边的...按钮,把里面的
+         按钮全部放到底下向上拖拽出来的区域". Collapsed (height:0) by
+         default so it takes no visible space until dragged open; its own
+         3 rows are exactly the 3 requested groupings. 布局参数/字体大小/
+         全树重排💣 have NO entry point anywhere in this expanded area —
+         "手机精致模式不开放全局重排按钮💣,布局参数按钮,字体大小按钮" —
+         desktop's own #rail/#paramsFlyout keep all three unchanged. -->
+    <div id="compactBarHandle" title="向上拖拽展开更多控件">
+      <div id="compactBarHandleBar"></div>
+    </div>
+    <div id="compactBarExpand">
+      <div id="compactBarRow4">
+        <button class="compact-btn" id="cbMoreImport" title="导入 JSON">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        </button>
+        <button class="compact-btn" id="cbMoreExport" title="导出 JSON">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>
+        </button>
+        <button class="compact-btn" id="cbMoreTheme" title="切换主题">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+        </button>
+      </div>
+      <div id="compactBarRow5">
+        <button class="compact-btn compact-btn-wide" id="cbMoreDesktop" title="返回电脑模式">🖥 电脑模式</button>
+        <button class="compact-btn compact-btn-wide" id="cbMoreRaw" title="手机原始模式">📱 原始模式</button>
+      </div>
+      <div id="compactBarRow6">
+        <div id="compactDepthCtl" title="默认最大可视深度">
+          <div id="compactDepthMinus">‹</div>
+          <div id="compactDepthValue">2</div>
+          <div id="compactDepthPlus">›</div>
+        </div>
+        <button class="compact-btn" id="cbMoreFit" title="回到全局">⛩</button>
+      </div>
     </div>
   </div>
 
   <div id="compactTreeSheet">
-    <div id="compactTreeHead"><span id="compactTreeBack">‹</span>树状视图</div>
+    <div id="compactTreeHead"><span id="compactTreeBack">‹</span>树状视图<span id="cbTreeMoveToggle">挪动</span></div>
     <div id="compactTreeList"></div>
   </div>
 
   <div id="searchFlyout">
-    <div class="sf-head"><input id="searchInput" type="text" placeholder="搜索节点 summary / detail…"></div>
+    <div class="sf-head"><input id="searchInput" type="text" placeholder="搜索节点 summary / detail…"><span id="searchCancelBtn">取消</span></div>
     <div id="searchResults"></div>
   </div>
 
@@ -1134,6 +1229,10 @@
         <div class="reset-btn-col">
           <button class="mini-btn" id="btnResetVisibleSizes" title="重置当前可见区域根节点的直接子节点的大小和位置，按数量分布为对称图形（不影响更深层子节点，也不影响其自身不可见的祖先）">⭕️</button>
           <div class="reset-btn-caption">局部重排<br>大小+位置</div>
+        </div>
+        <div class="reset-btn-col">
+          <button class="mini-btn" id="btnRandomizeVisibleStyle" title="随机打乱当前可见区域根节点每个直接子节点的颜色、边框类型、线条数——不改变位置和大小，不影响母节点自身和二级及更深层节点">🌈</button>
+          <div class="reset-btn-caption">局部随机<br>颜色+边框</div>
         </div>
         <div class="reset-btn-col">
           <button class="mini-btn" id="btnResetAllSizes" title="重置整棵树所有节点的大小，并把每一层子节点按数量重新分布为对称图形（弹窗确认）">💣</button>
@@ -4240,10 +4339,20 @@ function closeInsertDialog(){
   pendingInsert = null;
   // restore focus to whatever had it before the dialog opened (e.g. a tree
   // row, so arrow-key nav there keeps working) instead of letting the
-  // browser drop focus to <body> once the focused input hides.
-  if(focusBeforeInsertDialog && document.body.contains(focusBeforeInsertDialog)){
-    focusBeforeInsertDialog.focus();
-  }
+  // browser drop focus to <body> once the focused input hides. Wrapped in
+  // try/catch defensively: a stale/mid-removal element can throw on
+  // .focus() in rare cases, and since the overlay/pendingInsert above are
+  // already cleared by this point, the dialog itself must not appear
+  // stuck just because this cosmetic focus-restore step failed — "取消
+  // 按钮卡住了...确定按钮可以按" is exactly the kind of one-off,
+  // unreproducible symptom an uncaught exception here would produce
+  // (the click handler dies mid-way with no visible error on a
+  // touchscreen with no devtools open).
+  try{
+    if(focusBeforeInsertDialog && document.body.contains(focusBeforeInsertDialog)){
+      focusBeforeInsertDialog.focus();
+    }
+  }catch(err){ console.error('closeInsertDialog: focus restore failed', err); }
   focusBeforeInsertDialog = null;
 }
 function commitInsertDialog(){
@@ -4332,6 +4441,14 @@ insertOverlay.addEventListener('mousedown', function(e){ if(e.target===insertOve
   insertDialog.addEventListener('mousedown', function(ev){
     if(!document.documentElement.classList.contains('mobile-compact-mode')) return;
     if(ev.target.closest('#insertSummary') || ev.target.closest('#insertDetail')) return;
+    // the explicit 取消/确定 buttons already have their own click handlers
+    // (closeInsertDialog/commitInsertDialog) — arming this swipe-tracker
+    // from a mousedown that STARTED on one of them served no purpose (a
+    // tap there was never meant to swipe-dismiss) and meant any accidental
+    // pointer jitter during that tap could satisfy the movement threshold
+    // below and fire commitInsertDialog a SECOND time on top of whichever
+    // action the button's own click already performed.
+    if(ev.target.closest('#insertActionsRow')) return;
     startX=ev.clientX; startY=ev.clientY; tracking=true;
     fromLeftEdge = ev.clientX<24;
   });
@@ -5201,6 +5318,7 @@ registerRailPanel(btnSearch, searchFlyout, function(){
   searchActiveIdx = -1;
   setTimeout(function(){ searchInput.focus(); },50);
 });
+document.getElementById('searchCancelBtn').addEventListener('click', closeAllRailPanels);
 function escHtml(s){ return s.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
 function highlight(text, q){
   if(!q) return escHtml(text);
@@ -5223,6 +5341,19 @@ function commitSearchResult(n){
   selectedId = null;
   scheduleSave();
   render();
+  // "从搜索按钮跳转某个节点以后,界面显示会让底下的按钮区域被往上拖拽一些,
+  // 显示出更底层的控件" — searchInput is still focused (and the on-screen
+  // keyboard still up) at the moment this runs; closeAllRailPanels below
+  // sets the flyout's own `inert` on an ANCESTOR of the focused input,
+  // which does NOT reliably force an immediate blur in every browser —
+  // the keyboard can then dismiss asynchronously, AFTER #compactBar's own
+  // fixed-position layout has already settled back to its keyboard-open
+  // height, so the viewport's later resize-on-keyboard-close visually
+  // reads as #compactBar getting yanked upward on its own. Blurring here
+  // — BEFORE closeAllRailPanels — makes the keyboard start closing in the
+  // same frame as the panel's own close animation instead of racing it
+  // asynchronously afterward.
+  if(document.activeElement===searchInput) searchInput.blur();
   closeAllRailPanels();
   if(alreadyFocus){ resyncRootView(); }
 }
@@ -6450,6 +6581,28 @@ document.getElementById('btnResetVisibleSizes').addEventListener('click', functi
   render();
   resyncRootView();
 });
+/* "⭕️按钮后面再加一个🌈...随机化每个一级孩子的颜色,边框类型和数量,不改变
+   位置和大小,不影响母节点和二级节点" — scope is IDENTICAL to ⭕️'s own
+   "局部重排" (state.focusId's direct children only), just randomizing
+   color/border/borderLines instead of resetting size/position. Shared by
+   both desktop's #btnRandomizeVisibleStyle and 手机精致模式's
+   #cbRandomizeVisibleStyle so the one random-assignment rule never drifts
+   between the two surfaces. Every call reassigns FRESH random values
+   ("每次按动,赋予不同的随机值") rather than toggling/cycling — px/py/
+   scaleXNoKids/scaleYNoKids/scaleXKids/scaleYKids are never touched. */
+function randomizeVisibleChildrenStyle(){
+  pushUndo();
+  var kids = children(state.focusId);
+  if(!kids.length) return;
+  kids.forEach(function(k){
+    k.color = Math.floor(Math.random()*COLOR_PRESETS.length);
+    k.border = BORDER_STYLES[Math.floor(Math.random()*BORDER_STYLES.length)];
+    k.borderLines = BORDER_LINES_MIN + Math.floor(Math.random()*(BORDER_LINES_MAX-BORDER_LINES_MIN+1));
+  });
+  scheduleSave();
+  render();
+}
+document.getElementById('btnRandomizeVisibleStyle').addEventListener('click', randomizeVisibleChildrenStyle);
 document.getElementById('btnResetAllSizes').addEventListener('click', function(){
   // "全树重排": every node in the whole tree, at every depth — reset every
   // node's own size, then redistribute EVERY parent's direct children into
@@ -6872,8 +7025,6 @@ var cbNavUpEl = document.getElementById('cbNavUp');
 var cbNavDownEl = document.getElementById('cbNavDown');
 var cbNavSiblingEl = document.getElementById('cbNavSibling');
 var cbNavPrevSiblingEl = document.getElementById('cbNavPrevSibling');
-var cbMoreEl = document.getElementById('cbMore');
-var compactMoreSheetEl = document.getElementById('compactMoreSheet');
 var compactRandomZoneEl = document.getElementById('compactRandomZone');
 var compactDepthValueEl = document.getElementById('compactDepthValue');
 var compactDepthMinusEl = document.getElementById('compactDepthMinus');
@@ -6913,7 +7064,7 @@ var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge at 中速 (mult=
 // since compactDragConsumed only ever gets set by compactMoveSelected
 // itself.
 var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow'];
-var COMPACT_DRAG_MULT = {mid:1, fast:100, slow:1/5};
+var COMPACT_DRAG_MULT = {mid:1, fast:25, slow:1/5};
 var compactDragMode = 'off';
 var compactDragConsumed = false;
 var cbDragToggleEl = document.getElementById('cbDragToggle');
@@ -7074,26 +7225,74 @@ document.getElementById('cbMakeRoot').addEventListener('click', function(){
   selectedId = null;
   scheduleSave(); render();
 });
-cbMoreEl.addEventListener('click', function(){
-  compactMoreSheetEl.classList.toggle('open');
-});
-document.getElementById('compactMoreClose').addEventListener('click', function(){
-  compactMoreSheetEl.classList.remove('open');
-});
-document.getElementById('cbMoreParams').addEventListener('click', function(){ compactMoreSheetEl.classList.remove('open'); btnParams.click(); });
+// "去掉控件第一排最右边的...按钮,把里面的按钮全部放到底下向上拖拽出来的
+// 区域" — #compactBarExpand's max-height is dragged open/closed directly
+// via #compactBarHandle instead of a separate cbMore toggle button +
+// bottom-sheet overlay. Dragging measures real finger movement (dy) and
+// applies it 1:1 to max-height while the drag is live (no CSS
+// transition fighting the gesture — see .dragging's own transition:none
+// rule), then snaps to fully open or fully closed based on which side of
+// the halfway point the release landed on, with the normal .18s
+// transition restored for that final snap only.
+var compactBarExpandEl = document.getElementById('compactBarExpand');
+var compactBarHandleEl = document.getElementById('compactBarHandle');
+var compactBarExpandOpen = false;
+function compactBarExpandNaturalHeight(){
+  // measure with max-height temporarily released so scrollHeight reports
+  // the rows' real full height, not whatever max-height currently clamps
+  // it to — needed both while closed (max-height:0 would report 0) and
+  // mid-drag (an intermediate max-height would under-report).
+  var prevMax = compactBarExpandEl.style.maxHeight;
+  compactBarExpandEl.style.maxHeight = 'none';
+  var h = compactBarExpandEl.scrollHeight;
+  compactBarExpandEl.style.maxHeight = prevMax;
+  return h;
+}
+function setCompactBarExpandOpen(open){
+  compactBarExpandOpen = open;
+  compactBarExpandEl.classList.remove('dragging');
+  compactBarExpandEl.style.maxHeight = open ? compactBarExpandNaturalHeight()+'px' : '0px';
+}
+(function(){
+  var startY=0, startHeight=0, naturalHeight=0, dragging=false;
+  compactBarHandleEl.addEventListener('mousedown', function(ev){
+    startY = ev.clientY;
+    naturalHeight = compactBarExpandNaturalHeight();
+    startHeight = compactBarExpandOpen ? naturalHeight : 0;
+    dragging = true;
+    compactBarHandleEl.classList.add('dragging');
+    compactBarExpandEl.classList.add('dragging');
+  });
+  function onMove(ev){
+    if(!dragging) return;
+    // dragging UP (finger moving to smaller clientY) must INCREASE the
+    // revealed height — "向上拖拽展开" — hence startY-ev.clientY, not
+    // the more common ev.clientY-startY.
+    var dy = startY-ev.clientY;
+    var h = clamp(startHeight+dy, 0, naturalHeight);
+    compactBarExpandEl.style.maxHeight = h+'px';
+  }
+  function onUp(){
+    if(!dragging) return;
+    dragging = false;
+    compactBarHandleEl.classList.remove('dragging');
+    var cur = parseFloat(compactBarExpandEl.style.maxHeight) || 0;
+    setCompactBarExpandOpen(cur > naturalHeight/2);
+  }
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+})();
 document.getElementById('cbMoreTheme').addEventListener('click', function(){ btnTheme.click(); });
 document.getElementById('cbMoreImport').addEventListener('click', function(){ document.getElementById('btnImport').click(); });
 document.getElementById('cbMoreExport').addEventListener('click', function(){ document.getElementById('btnExport').click(); });
 document.getElementById('cbMoreFit').addEventListener('click', function(){ document.getElementById('btnFit').click(); });
-document.getElementById('cbMoreResetAll').addEventListener('click', function(){ document.getElementById('btnResetAllSizes').click(); });
 document.getElementById('cbCenterVisibleChildren').addEventListener('click', function(){ document.getElementById('btnCenterVisibleChildren').click(); });
 document.getElementById('cbResetVisibleSizes').addEventListener('click', function(){ document.getElementById('btnResetVisibleSizes').click(); });
+document.getElementById('cbRandomizeVisibleStyle').addEventListener('click', randomizeVisibleChildrenStyle);
 document.getElementById('cbMoreDesktop').addEventListener('click', function(){
-  compactMoreSheetEl.classList.remove('open');
   appParams.uiMode = 'desktop'; applyUiMode('desktop'); saveParams();
 });
 document.getElementById('cbMoreRaw').addEventListener('click', function(){
-  compactMoreSheetEl.classList.remove('open');
   appParams.uiMode = 'mobile-raw'; applyUiMode('mobile-raw'); saveParams();
 });
 
@@ -7114,8 +7313,35 @@ function openCompactTreeSheet(){
 }
 function closeCompactTreeSheet(){
   compactTreeSheetEl.classList.remove('open');
+  // "如果退出tree view...也直接取消挪动功能" — leaving the sheet with
+  // move-mode still armed would otherwise leave treeMoveSourceId pointing
+  // at a pick the user can no longer see or act on the next time the
+  // sheet reopens.
+  setTreeMoveMode(false);
 }
 document.getElementById('compactTreeBack').addEventListener('click', closeCompactTreeSheet);
+// "点开树视图后...最右边添加一个按钮'挪动'" — a 2-state toggle (armed/not)
+// plus, while armed, an optional "picked source" sub-state. Both pieces
+// of state are read by renderCompactTreeView on every re-render, so
+// toggling either one just re-renders the whole list rather than
+// patching individual rows in place.
+var cbTreeMoveToggleEl = document.getElementById('cbTreeMoveToggle');
+var treeMoveModeOn = false;
+var treeMoveSourceId = null;
+function setTreeMoveMode(on){
+  treeMoveModeOn = on;
+  treeMoveSourceId = null;
+  cbTreeMoveToggleEl.classList.toggle('active', on);
+  renderCompactTreeView();
+}
+cbTreeMoveToggleEl.addEventListener('click', function(){
+  // "如果什么都不操作,直接再按一次挪动,挪动再次变灰,功能取消" — plain
+  // toggle, off->on->off, with no side effects beyond the mode itself
+  // (any in-progress pick is also implicitly cleared by setTreeMoveMode
+  // resetting treeMoveSourceId, matching "退出...也直接取消挪动功能"'s
+  // same all-or-nothing cancel semantics).
+  setTreeMoveMode(!treeMoveModeOn);
+});
 /* left-edge-inward swipe OR downward swipe anywhere on the sheet closes
    it — "屏幕左侧内滑或者屏幕中间下滑关闭" — both common mobile
    dismiss gestures. Tracked via plain mousedown/move/up (this file has no
@@ -7283,6 +7509,7 @@ function attachCompactTreeRowDrag(row, id){
   }
   row.addEventListener('mousedown', function(ev){
     if(ev.target.closest('.ctv-tag')) return; // the badge has its own long-press (delete menu) — see attachTreeRowDrag's own tag handler
+    if(ev.target.closest('.ctv-move-btn')) return; // "挪动" mode's own 选择/孩子/兄弟 buttons have their own click handlers — a mousedown starting on one must never ALSO arm this row's long-press-drag
     if(id===state.rootId) return; // the ultimate root can't be dragged (matches desktop's own drop.addEventListener guard)
     longPressFired = false;
     clearTimer();
@@ -7307,6 +7534,43 @@ function attachCompactTreeRowDrag(row, id){
     // never sibling listeners on the identical target.
     if(longPressFired){ ev.stopImmediatePropagation(); longPressFired = false; }
   });
+}
+/* the actual reparent behind "挪动"'s 孩子/兄弟 buttons — mode is
+   'child' (source becomes targetId's FIRST child — "放在目标的第一个
+   孩子") or 'sibling' (source becomes targetId's NEXT sibling —
+   "放在目标节点的下一个兄弟同级别位置"). Shares the same
+   remove-then-reinsert shape as attachCompactTreeRowDrag's own drop
+   handler (see its comments for why px/py/placed reset on move — a
+   moved node has no meaningful position under a brand-new parent, so
+   the normal ring-placement fresh-node path re-lays it out same as a
+   newly-created child would be), but keeps its own name/signature since
+   this is triggered by an explicit button tap, not a drag-drop gesture,
+   and always finishes by fully disarming move-mode (never batches
+   multiple moves per pick — "之后挪动节点变灰...按钮消失"). */
+function commitTreeMove(sourceId, targetId, mode){
+  if(!sourceId) return; // no pick yet — 孩子/兄弟 are no-ops until 选择 has armed a source
+  if(sourceId===targetId || isDescendant(sourceId, targetId)) return; // can't move a node into itself or its own descendant
+  if(mode==='sibling' && targetId===state.rootId) return; // the ultimate root has no siblings to become one of
+  var sourceNode = node(sourceId);
+  var targetNode = node(targetId);
+  if(!sourceNode || !targetNode) return;
+  pushUndo();
+  removeFromParent(sourceId);
+  sourceNode.px = 0; sourceNode.py = 0; sourceNode.placed = false;
+  if(mode==='child'){
+    sourceNode.parentId = targetId;
+    targetNode.children.unshift(sourceId); // "第一个孩子" — unshift, not push
+    targetNode.drilled = true;
+  } else {
+    var pn = parentOf(targetId) || node(state.rootId);
+    sourceNode.parentId = pn.id;
+    var idx = pn.children.indexOf(targetId);
+    pn.children.splice(idx+1, 0, sourceId); // "下一个兄弟" — right after targetId, not at the end
+  }
+  selectedId = sourceId;
+  scheduleSave();
+  setTreeMoveMode(false); // "之后挪动节点变灰,选择和孩子和兄弟按钮消失" — already re-renders the tree list
+  render();
 }
 function renderCompactTreeView(){
   compactTreeListEl.innerHTML = '';
@@ -7373,6 +7637,46 @@ function renderCompactTreeView(){
     summary.className = 'ctv-summary';
     summary.textContent = richToPlain(n.summary) || '(未命名)';
     row.appendChild(summary);
+    // "挪动"模式下每行右侧的3个按钮 — "选择"/"孩子"/"兄弟". Rendered on
+    // EVERY row (including the tree root, matching how the existing
+    // long-press-drag reparent already treats the root as a valid drop
+    // target) while treeMoveModeOn is set; entirely absent otherwise, so
+    // normal browsing never sees these at all.
+    if(treeMoveModeOn){
+      var pickBtn = document.createElement('span');
+      pickBtn.className = 'ctv-move-btn ctv-move-pick';
+      pickBtn.textContent = '选择';
+      if(treeMoveSourceId===id) pickBtn.classList.add('ctv-move-picked');
+      else if(treeMoveSourceId) pickBtn.classList.add('ctv-move-dimmed');
+      pickBtn.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        // "按下任何一行的选择,其他所有选择都变灰色" — re-picking a
+        // DIFFERENT row while one is already picked simply moves the
+        // pick (re-render reflects the new picked/dimmed split); tapping
+        // the ALREADY-picked row's own 选择 again un-picks it back to
+        // "everything blue, nothing picked" — the natural inverse of the
+        // pick action itself, not a separate cancel path.
+        treeMoveSourceId = (treeMoveSourceId===id) ? null : id;
+        renderCompactTreeView();
+      });
+      row.appendChild(pickBtn);
+      var childBtn = document.createElement('span');
+      childBtn.className = 'ctv-move-btn ctv-move-child';
+      childBtn.textContent = '孩子';
+      childBtn.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        commitTreeMove(treeMoveSourceId, id, 'child');
+      });
+      row.appendChild(childBtn);
+      var siblingBtn = document.createElement('span');
+      siblingBtn.className = 'ctv-move-btn ctv-move-sibling';
+      siblingBtn.textContent = '兄弟';
+      siblingBtn.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        commitTreeMove(treeMoveSourceId, id, 'sibling');
+      });
+      row.appendChild(siblingBtn);
+    }
     // registered BEFORE the expand/collapse click handler below so its
     // own click-suppression (after a completed long-press-drag) runs
     // first — click listeners fire in registration order.
