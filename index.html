@@ -743,9 +743,26 @@
      上方,左右对称". updateCompactRootChrome (called from render()) is
      the only thing that ever sets its text content. */
   html.mobile-compact-mode #compactRootLabel{
-    display:flex;position:absolute;top:8%;left:0;right:0;justify-content:center;
+    display:block;position:absolute;top:8%;left:0;right:0;
     text-align:center;padding:0 8%;font-size:clamp(15px,4vw,19px);font-weight:700;
     color:var(--text-main);pointer-events:none;z-index:5;
+    /* "长文本...按下🟧切为根节点视角以后,会突出屏幕" — this was
+       display:flex with justify-content:center, whose flex-item text
+       child defaults to min-width:auto (effectively "never wrap, stay
+       exactly as wide as the unbroken line"), so a long single-line
+       summary just bled straight off both screen edges instead of
+       wrapping — the font itself was never actually growing, the text
+       simply refused to break. display:block (needing no
+       justify-content — text-align:center + the existing left:0;right:0
+       already center it) plus explicit wrapping below fixes that; the
+       max-height+overflow pair then caps a truly enormous summary at a
+       fixed number of visible lines rather than pushing #compactBar
+       around or bleeding past the bottom of the label's own reserved
+       band, same "never overflow, never resize surrounding chrome"
+       contract every other long-text spot in this file already keeps.
+       */
+    overflow-wrap:break-word;word-break:break-word;white-space:normal;
+    max-height:34vh;overflow:hidden;line-height:1.3;
   }
   /* one-shot "zoom in" entrance for the NEW root element right after a
      pinch-to-go-up gesture — see render()'s own pendingPinchZoomAnim
@@ -1047,7 +1064,7 @@
         <button class="compact-btn" id="cbNavSibling" title="循环跳转到下一个兄弟节点">➡️</button>
       </div>
       <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
-      <button class="compact-btn" id="cbAddToInbox" title="新建节点到 1 号收纳节点">✳️</button>
+      <button class="compact-btn" id="cbAddToInbox" title="新建节点到未归纳节点">✳️</button>
       <button class="compact-btn" id="cbMakeRoot" title="以最近选中的节点为根节点视图（等价双击）">🟧</button>
       <button class="compact-btn" id="cbMore" title="更多" style="margin-left:auto;">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
@@ -3505,7 +3522,21 @@ function buildContainerTree(n, isRoot){
     });
     inner.appendChild(layer);
   } else {
-    frame.appendChild(buildNodeContent(n, box));
+    // "纯纯的叶子节点展示为可见区域根节点时,它的文字会显示两遍,一遍在
+    // 背景墙,一遍在放大版的正中心" — compact-root-hide-frame (above)
+    // only strips the FRAME's own background/border/box-shadow via CSS;
+    // buildNodeContent's actual text is a normal sibling INSIDE that
+    // frame, completely unaffected by those CSS rules, so a leaf root's
+    // own summary/detail rendered here just sat on screen, unstyled, on
+    // top of #compactRootLabel's centered text showing the exact same
+    // summary — "分枝节点没有这个问题" because a branch root takes the
+    // showChildren branch above instead, where the equivalent text (the
+    // chip) is explicitly skipped for compactRootMode (see the
+    // `if(!compactRootMode) inner.appendChild(chip)` line above).
+    // Skipping buildNodeContent here the same way makes a leaf root
+    // behave exactly like a branch root: only #compactRootLabel's text
+    // ever shows for the root itself.
+    if(!compactRootMode) frame.appendChild(buildNodeContent(n, box));
     // 手机精致模式 uses its own persistent fold badge instead (see below) —
     // showing BOTH here would double up the top-right corner.
     if(kids.length && !document.documentElement.classList.contains('mobile-compact-mode')){
@@ -3981,16 +4012,16 @@ function compactNodeMousedown(ev, el, n){
 function compactIsBranch(n){
   return n.drilled && children(n.id).some(function(c){ return c.category!=='C'; });
 }
-function compactNodeTap(n, ev){
-  if(isDoubleClick('compact:'+n.id, ev)){
-    // 双击：设为可见区域根节点，等价 shift+enter
-    pushUndo();
-    n.drilled = true;
-    state.focusId = n.id;
-    selectedId = null;
-    scheduleSave(); render();
-    return;
-  }
+/* the actual visibility-cycle behavior shared by a normal node's tap
+   (compactNodeTap, below) AND a tap on the current root's own
+   background/blank-canvas area (startCompactGroupPan's onUp) — "触摸
+   可见区域根节点(背景墙)...跟节点位置上整个背景墙都是能激活这个节点的
+   正常可见性切换功能:如果是一个叶子节点,就切换自己的可见性,如果它还有
+   小孩,则自己保持可见,循环切换自己小孩的可见性". Extracted out of
+   compactNodeTap so both call sites run the EXACT same logic — "切换
+   功能本身是对的,不要动,只是让它对于...背景墙也能生效" — rather than a
+   second, easily-drifting reimplementation. */
+function compactCycleNodeVis(n){
   pushUndo();
   if(compactIsBranch(n)){
     var subtree = subtreeIds(n.id).map(node).filter(function(x){ return x && x.category!=='C'; });
@@ -4019,6 +4050,18 @@ function compactNodeTap(n, ev){
   scheduleSave();
   triggerGlow();
   render();
+}
+function compactNodeTap(n, ev){
+  if(isDoubleClick('compact:'+n.id, ev)){
+    // 双击：设为可见区域根节点，等价 shift+enter
+    pushUndo();
+    n.drilled = true;
+    state.focusId = n.id;
+    selectedId = null;
+    scheduleSave(); render();
+    return;
+  }
+  compactCycleNodeVis(n);
 }
 
 
@@ -4209,6 +4252,7 @@ function commitInsertDialog(){
   var detail = sanitizeRich(insertDetailEl.innerHTML);
   var summaryPlain = richToPlain(summary).trim();
   var detailPlain = richToPlain(detail).trim();
+  var committedNewId = null;
   if(pendingInsert.mode==='edit'){
     pushUndo();
     pendingInsert.node.summary = summaryPlain ? summary : '';
@@ -4253,6 +4297,7 @@ function commitInsertDialog(){
         newNode.scaleXKids *= pendingInsertSizeMult; newNode.scaleYKids *= pendingInsertSizeMult;
       }
       selectedId = newId; triggerGlow();
+      committedNewId = newId;
     }
     scheduleSave();
   }
@@ -4261,7 +4306,16 @@ function commitInsertDialog(){
     var batchCfg = pendingInsert;
     openInsertDialog(batchCfg);
   } else {
+    // onCommit fires exactly once, right before the dialog actually
+    // closes, and only on a REAL non-empty commit (not an empty-submit
+    // no-op) — "输入完以后确认以后,主视角要跳转..." describes a
+    // successful creation, not every dismissal of the dialog. Batch mode
+    // (above) deliberately never reaches here per-item; a caller wanting
+    // per-item behavior in batch mode isn't a case this file currently
+    // has, so onCommit is simplest scoped to the single-insert path only.
+    var onCommit = pendingInsert && pendingInsert.onCommit;
     closeInsertDialog();
+    if(onCommit && committedNewId) onCommit(committedNewId);
   }
 }
 document.getElementById('insertOkBtn').addEventListener('click', commitInsertDialog);
@@ -4814,7 +4868,19 @@ function startCompactGroupPan(ev, rootNode){
     window.removeEventListener('mouseup', onUp);
     clearLongPress();
     if(longPressFired) return; // openInsertDialog already took over
-    if(!didPan){ selectedId = null; render(); }
+    if(!didPan){
+      // "触摸可见区域根节点(背景墙)...跟节点位置上整个背景墙都是能激活
+      // 这个节点的正常可见性切换功能" — a plain tap on the root's own
+      // blank background (no pan, no long-press) now runs the exact same
+      // visibility-cycle compactNodeTap already runs for any OTHER node,
+      // just reached via the background instead of a frame/chip that the
+      // root doesn't visually have (compact-root-hide-frame). Double-tap
+      // is deliberately NOT handled here — the root is already ITS OWN
+      // focus, so "double-tap makes it the root" would be a no-op, and
+      // #canvasWrap's own dblclick-adjacent gestures elsewhere in this
+      // file don't apply to blank-background taps either.
+      compactCycleNodeVis(rootNode);
+    }
   }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
@@ -4926,6 +4992,42 @@ canvasWrap.addEventListener('touchmove', function(e){
     activeTarget = null;
   }, {passive:true});
 })();
+
+// "使用🖐️然后平移很远,关闭🖐️的时候还是出现了按键锁死现象" — EVERY drag/
+// pan gesture in this file (startCompactGroupPan, startNodeDrag, the tree-
+// row drag, etc.) works the same way: mousedown attaches a window-level
+// mousemove listener, and only that SAME gesture's own eventual mouseup
+// ever removes it. touchcancel above already covers ONE way a real
+// mouseup can fail to arrive (a second finger landing mid-gesture), but a
+// touch stream can be interrupted in ways that never fire touchend OR
+// touchcancel on the page at all — the OS's own edge-swipe-back gesture,
+// an incoming call/notification banner, switching apps mid-drag while
+// panning "很远" near a screen edge. When that happens, the gesture's
+// listener is permanently leaked on `window` — every mouse/touch move
+// anywhere on the page from then on still fires it, calling render() (or
+// worse, mutating compactChildrenView/node px/py) on every move even
+// though no button's own click handler is doing anything wrong — reading
+// exactly as "每个按钮能按,有阴影动态,但就是没功能": the CLICK still
+// registers and animates, but a stray synthetic mousemove/mouseup event
+// from this leaked listener firing first can leave shared state (like
+// compactChildrenView's pan) in a place a subsequent click's own logic
+// doesn't expect, and the leaked listener itself never goes away to stop
+// it from happening again on the very next click.
+//
+// window's own blur/visibilitychange events reliably fire for every one
+// of those interruption cases (losing focus to the OS, the tab being
+// backgrounded) even when no DOM touch event ever does — dispatching a
+// synthetic mouseup on those is a blanket "release whatever's currently
+// being dragged" that every gesture's own onUp already knows how to
+// handle safely (they're all written to no-op past their own already-
+// removed listeners), so this needs no per-gesture-function changes.
+function forceReleaseStuckDrag(){
+  window.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, cancelable:true, view:window}));
+}
+window.addEventListener('blur', forceReleaseStuckDrag);
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden) forceReleaseStuckDrag();
+});
 
 canvasWrap.addEventListener('wheel', function(e){
   e.preventDefault();
@@ -6799,7 +6901,7 @@ var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge at 中速 (mult=
 // COMPACT_MOVE_STEP*that speed's multiplier instead of navigating the
 // focus root/siblings.
 //
-// 4-state cycle "off → 中速 → 快速 → 慢速 → off" (default off) — NOT a
+// 4-state cycle "off → 快速 → 中速 → 慢速 → off" (default off) — NOT a
 // plain on/off toggle anymore. Each tap normally just advances to the
 // next state in that fixed order. The ONE exception: the moment an
 // arrow button actually consumes the CURRENT armed state to move a node
@@ -6810,15 +6912,15 @@ var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge at 中速 (mult=
 // tapped again with no drag in between) still just advances normally,
 // since compactDragConsumed only ever gets set by compactMoveSelected
 // itself.
-var COMPACT_DRAG_SPEEDS = ['off', 'mid', 'fast', 'slow'];
-var COMPACT_DRAG_MULT = {mid:1, fast:5, slow:1/5};
+var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow'];
+var COMPACT_DRAG_MULT = {mid:1, fast:100, slow:1/5};
 var compactDragMode = 'off';
 var compactDragConsumed = false;
 var cbDragToggleEl = document.getElementById('cbDragToggle');
 function refreshCbDragToggleUI(){
   cbDragToggleEl.classList.remove('active', 'cbdrag-mid', 'cbdrag-fast', 'cbdrag-slow');
   if(compactDragMode!=='off') cbDragToggleEl.classList.add('cbdrag-'+compactDragMode);
-  cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：中速→快速→慢速）'
+  cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：快速→中速→慢速）'
     : '拖拽平移中（'+({mid:'中速', fast:'快速', slow:'慢速'})[compactDragMode]+'）：点击切换下一速度，或移动一次节点后再点击关闭';
 }
 cbDragToggleEl.addEventListener('click', function(){
@@ -6929,24 +7031,33 @@ document.getElementById('cbAddChild').addEventListener('click', function(){
 });
 /* "第二个+表示在根节点目录下新建到一个特殊的编号为一的节点,如果没有这个
    节点就创建,否则直接追加到已有的孩子列表里面" — looks for a direct child
-   of state.rootId whose summary is exactly "1" (plain-text compare, same
-   richToPlain everything else in this file already uses to read a rich-
-   text summary as plain text); creates it (via a real pushUndo/addChild
-   pair, since that container node itself has no dialog of its own) if
-   missing, then opens the SAME unified dialog (mode:'child') anchored on
-   it for the new node's own text/attributes — never a second "1" node.
-   */
+   of state.rootId whose summary is exactly "未归纳" (plain-text compare,
+   same richToPlain everything else in this file already uses to read a
+   rich-text summary as plain text); creates it (via a real pushUndo/
+   addChild pair, since that container node itself has no dialog of its
+   own) if missing, then opens the SAME unified dialog (mode:'child')
+   anchored on it for the new node's own text/attributes — never a
+   second "未归纳" node. Once that dialog is confirmed, onCommit jumps
+   the main view to this inbox node as its OWN focus root — "确认以后,
+   主视角要跳转到以那个按钮为可见区域根节点的视角,而不是现在这样停留在
+   之前的视角". */
 document.getElementById('cbAddToInbox').addEventListener('click', function(){
   var rootKids = children(state.rootId);
-  var inbox = rootKids.filter(function(k){ return richToPlain(k.summary)==='1'; })[0];
+  var inbox = rootKids.filter(function(k){ return richToPlain(k.summary)==='未归纳'; })[0];
   if(!inbox){
     pushUndo();
-    var inboxId = addChild(state.rootId, '1', '');
+    var inboxId = addChild(state.rootId, '未归纳', '');
     inbox = node(inboxId);
     node(state.rootId).drilled = true;
     scheduleSave(); render();
   }
-  openInsertDialog({mode:'child', anchorId:inbox.id});
+  openInsertDialog({mode:'child', anchorId:inbox.id, onCommit:function(){
+    inbox.drilled = true;
+    state.focusId = inbox.id;
+    selectedId = null;
+    scheduleSave(); render();
+    resyncRootView();
+  }});
 });
 // 🟧: "最近选中的节点变成根节点视图,相当于双击触摸" — same effect as
 // compactNodeTap's own double-tap branch (n.drilled=true; state.focusId=
