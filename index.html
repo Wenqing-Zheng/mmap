@@ -822,7 +822,7 @@
     display:flex;flex-direction:column;order:2;width:100%;
     background:var(--panel-bg);border-top:1px solid var(--panel-border);
     padding:clamp(4px,1.2vw,8px) clamp(6px,2vw,12px);gap:clamp(3px,1vw,6px);
-    box-sizing:border-box;touch-action:manipulation;
+    box-sizing:border-box;touch-action:none;
   }
   #compactBarRow1{display:flex;align-items:center;gap:clamp(4px,1.5vw,10px);}
   .compact-btn{
@@ -897,7 +897,7 @@
      controls — "底部控制按钮分成两排...避免放不下还要水平拖动". */
   #compactRandomZone{
     display:flex;align-items:center;gap:clamp(3px,1vw,6px);flex:1;min-width:0;
-    overflow-x:auto;
+    overflow-x:auto;touch-action:pan-x;
   }
   .compact-rb-btn{
     flex-shrink:0;display:flex;align-items:center;justify-content:center;
@@ -911,7 +911,7 @@
      "子节点展开深度（左中右三部分和电脑一样，但近似三个正方形按钮）". */
   #compactDepthCtl{
     display:flex;flex-shrink:0;border-radius:clamp(8px,2vw,12px);overflow:hidden;
-    border:1px solid var(--panel-border);
+    border:1px solid var(--panel-border);touch-action:manipulation;
   }
   #compactDepthCtl > div{
     display:flex;align-items:center;justify-content:center;cursor:pointer;
@@ -929,7 +929,7 @@
   #compactBarRow2{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactBarRow3{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactRelaxLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
-  #compactRelaxSlider{width:100%;accent-color:var(--accent);}
+  #compactRelaxSlider{width:100%;accent-color:var(--accent);touch-action:manipulation;}
 
   /* "去掉控件第一排最右边的...按钮,把里面的按钮全部放到底下向上拖拽出来的
      区域" — replaces the old cbMore-button + separate compactMoreSheet
@@ -1690,26 +1690,16 @@ function sanitizeStateNodes(s){
     if(n.masterLevel==null) n.masterLevel = 3;
     delete n.showCount; // showCount tracking was removed entirely — see task on Th-based weighting
   });
-  fixupCategoryConstraints(s);
 }
-/* enforce the A>B>C hierarchy constraint on load/import, in case the JSON
-   was hand-edited or came from an older version with no categories at all
-   (where sanitizeStateNodes just defaulted everyone to 'A', which already
-   satisfies the constraint trivially — this pass is a no-op then). Walks
-   top-down: a parent's category caps what its children are allowed to be
-   (A children may be A/B/C, B children may be B/C, C children must be C). */
-function fixupCategoryConstraints(s){
-  var rank = {A:0, B:1, C:2};
-  (function walk(id, minRank){
-    var n = s.nodes[id];
-    if(!n) return;
-    if(rank[n.category] < minRank){
-      n.category = minRank===1 ? 'B' : 'C';
-    }
-    var childMinRank = Math.max(minRank, rank[n.category]);
-    n.children.forEach(function(cid){ walk(cid, childMinRank); });
-  })(s.rootId, 0);
-}
+/* fixupCategoryConstraints (the A>B>C hierarchy enforcement pass this
+   used to call on every load/import) is REMOVED along with
+   setNodeCategory's own propagation — "彻底去掉这些约束". Loading/
+   importing a hand-edited or older-format JSON therefore keeps whatever
+   category each node was individually saved with; category!=='A'/'B'/'C'
+   still falls back to 'A' above (an actual data-validity fallback for a
+   missing/garbage field, not a hierarchy constraint), but no longer
+   patches a VALID category up/down just because an ancestor or
+   descendant happens to disagree. */
 var saveTimer=null;
 function scheduleSave(){
   clearTimeout(saveTimer);
@@ -1950,21 +1940,19 @@ function defaultCategoryForParent(parentId){
    - becomes 'B' -> every descendant that is currently 'A' becomes 'C'
      (a B node can't have an A descendant); existing B/C descendants are
      left untouched. */
+// "彻底去掉这些约束,不要让修改一个节点的类型影响任何其他类型节点" —
+// setNodeCategory used to auto-propagate: setting A forced every
+// ANCESTOR to A too, setting C forced the whole SUBTREE to C, and
+// setting B downgraded any A descendant to C. All three propagation
+// rules are removed — changing one node's own category now touches
+// ONLY that node, never a parent, child, or any other node in the tree.
+// This is the single shared entry point both desktop and 手机精致模式
+// call through (buildCategoryBadge's cycle-click, the insert dialog's
+// category picker, etc.), so removing the propagation here applies to
+// both surfaces identically with no separate mobile-side change needed.
 function setNodeCategory(id, cat){
   var n = node(id); if(!n) return;
   n.category = cat;
-  if(cat==='A'){
-    var p = parentOf(id);
-    while(p){ p.category='A'; p = parentOf(p.id); }
-  } else if(cat==='C'){
-    subtreeIds(id).forEach(function(cid){ if(cid!==id) node(cid).category='C'; });
-  } else if(cat==='B'){
-    subtreeIds(id).forEach(function(cid){
-      if(cid===id) return;
-      var c = node(cid);
-      if(c.category==='A') c.category='C';
-    });
-  }
 }
 /* importance (borderLines) and proficiency (masterLevel) edits propagate
    DOWNWARD ONLY, into every A/B descendant (never C, since C nodes don't
@@ -2101,20 +2089,12 @@ function insertWrapChild(id, summary, detail){
     if(c) c.parentId = newId;
   });
   n.children = [newId];
-  // moving A's existing children under B can violate the A>B>C hierarchy —
-  // e.g. A was category B with a B-category child, and B(the wrapper)
-  // defaulted to C (since its parent A is now 'B'); a C node can't have a
-  // B descendant. Re-run the same top-down rank fixup used on load/import,
-  // scoped to the wrapper's own subtree, to bump any now-too-low-rank
-  // descendant up to match instead of leaving an invalid tree.
-  var rank = {A:0, B:1, C:2};
-  (function walk(cid, minRank){
-    var c = node(cid);
-    if(!c) return;
-    if(rank[c.category] < minRank) c.category = minRank===1 ? 'B' : 'C';
-    var childMinRank = Math.max(minRank, rank[c.category]);
-    c.children.forEach(function(gcid){ walk(gcid, childMinRank); });
-  })(newId, rank[newNode.category]);
+  // "彻底去掉这些约束" — the A>B>C rank-fixup that used to run here
+  // (bumping a relocated child's category up if wrapping it under a
+  // lower-rank new parent would otherwise "violate the hierarchy") is
+  // removed along with setNodeCategory's own propagation; a relocated
+  // child now simply keeps whatever category it already had, exactly
+  // like removeFromParent/reparenting anywhere else in this file.
   // A was showing its children directly (drilled) before wrapping — keep
   // that same visual continuity through the new intermediate node instead
   // of the grandchildren suddenly disappearing behind a freshly-collapsed B.
@@ -3072,19 +3052,62 @@ function render(){
     renderImpl();
   }catch(err){
     console.error('render() failed, attempting automatic recovery via undo:', err);
-    if(renderRecoveryInProgress || !undoStack.length){
-      renderRecoveryInProgress = false;
+    // "点⭕️再点🟧就卡死了...防卡死还是做得不行" — the PREVIOUS version of
+    // this watchdog only wrapped the FIRST retry attempt in a try; if
+    // THAT retry also threw (exactly what happens when the crash is a
+    // genuine code-path bug that reproduces on ~any state, not a one-off
+    // bad data snapshot from a single prior edit), the second exception
+    // had nothing left to catch it and escaped all the way out of
+    // render() into whatever button's click handler was running —
+    // silently dying mid-handler, with no further recovery attempted at
+    // all, and repeated clicks after that just burned through undoStack
+    // (one popped, discarded entry per click) until it ran dry with
+    // STILL nothing working. This rewrite loops the undo-and-retry step
+    // itself, so a SECOND bad snapshot doesn't end the recovery attempt —
+    // it just pops one snapshot further back and tries again, same as
+    // pressing ⌘Z repeatedly — and once undoStack is genuinely empty (or
+    // recursion into this same recovery path is detected), it falls back
+    // to a LAST-RESORT reset that never touches undo again: point focus/
+    // selection at state.rootId and re-render from there. That fallback
+    // has no external dependency that could itself be corrupted (rootId
+    // always exists — see loadState/freshState), so it is the one path
+    // in this whole function guaranteed to either succeed or reveal a
+    // truly unrecoverable bug via a real thrown error instead of a
+    // silent, permanent lockup.
+    if(renderRecoveryInProgress){
+      // already inside a recovery attempt when this fired — a nested
+      // render() call from WITHIN renderImpl/recovery itself is the one
+      // case this function can't safely retry its way out of (retrying
+      // here would just recurse), so surface it as a real error instead
+      // of silently swallowing it.
       throw err;
     }
     renderRecoveryInProgress = true;
     try{
-      var snap = JSON.parse(undoStack.pop());
-      state.nodes = snap.nodes;
-      state.rootId = snap.rootId;
-      if(!state.nodes[state.focusId]) state.focusId = state.rootId;
-      if(selectedId && !state.nodes[selectedId]) selectedId = state.focusId;
-      scheduleSave();
+      while(undoStack.length){
+        try{
+          var snap = JSON.parse(undoStack.pop());
+          state.nodes = snap.nodes;
+          state.rootId = snap.rootId;
+          if(!state.nodes[state.focusId]) state.focusId = state.rootId;
+          if(selectedId && !state.nodes[selectedId]) selectedId = state.focusId;
+          renderImpl();
+          scheduleSave();
+          return; // this snapshot rendered cleanly — recovery succeeded
+        }catch(retryErr){
+          console.error('render() recovery: this undo snapshot also failed, trying the next one back:', retryErr);
+          // loop continues — pop the NEXT snapshot back instead of giving up
+        }
+      }
+      // undoStack exhausted with nothing rendering cleanly — last resort:
+      // reset to the ultimate root with nothing selected. If this ALSO
+      // throws, the error is genuinely unrecoverable and propagates for
+      // real (better a visible crash than a silent permanent lockup).
+      console.error('render() recovery: undo history exhausted, resetting to root as last resort.');
+      state.focusId = state.rootId;
+      selectedId = null;
       renderImpl();
+      scheduleSave();
     } finally {
       renderRecoveryInProgress = false;
     }
@@ -3292,21 +3315,29 @@ function recomputeCompactChildrenView(parentId, viewportW, viewportH){
   // matching aspect ratios (viewportAspect===groupAspect) falls into the
   // width-fit branch, which is equivalent (nothing to scroll either way).
   var fitHeight = groupAspect > viewportAspect;
-  // scale must satisfy BOTH bbox.w*scale<=availW AND bbox.h*scale<=availH
-  // — picking only the FIT axis's own ratio (availH/bbox.h when
-  // fitHeight, say) and skipping the OTHER axis's ratio entirely was the
-  // actual overflow bug: a group whose aspect ratio calls for
-  // fit-by-height can still, after that one-axis scale, come out WIDER
-  // than the viewport on the perpendicular axis (e.g. a 900x300 group in
-  // a 375x600 portrait viewport: fit-by-height's own raw ratio is 1.9x —
-  // a MAGNIFY, immediately clamped to 1 by the anti-magnify rule below,
-  // which then left the now-unscaled 900px-wide group still overflowing
-  // the 375px-wide screen entirely unshrunk) — "跳转以后...文本框全都要在
-  // 屏幕以内,而不是现在这样有一半突出去". Taking the min of BOTH axes'
-  // ratios guarantees the group fits inside availW×availH on every side
-  // simultaneously, with the SAME fitHeight/axis choice still governing
-  // which direction stays scrollable afterward.
-  var scale = Math.min(availW/bbox.w, availH/bbox.h);
+  // scale must come from ONLY the fit axis's own ratio — NOT
+  // Math.min(availW/bbox.w, availH/bbox.h). fitHeight's own definition
+  // above ALGEBRAICALLY guarantees availW/bbox.w < availH/bbox.h whenever
+  // fitHeight is true (and the reverse whenever it's false) — so taking
+  // the min of both ratios always selects the ratio for the axis
+  // OPPOSITE to whichever one fitHeight/axis just chose, silently
+  // shrinking the FIT axis down to match the OVERFLOW axis's own tiny
+  // ratio and completely inverting the "fit the short axis, let the long
+  // axis overflow-and-scroll" design this whole function exists for. A
+  // tall many-row, fixed-4-column grid (⭕️'s own layout past 16 nodes)
+  // makes this maximally visible: fitHeight correctly resolves to false
+  // (narrow-and-tall group -> fit WIDTH, scroll vertically), but
+  // Math.min then picked availH/bbox.h anyway — the height ratio, which
+  // shrinks toward zero as row count grows — silently overriding the
+  // width-fit decision and shrinking every node's font right along with
+  // it, the more rows there are: "行数方向...应该...支持上下滚动看完全部,
+  // 而不是字体无限变小...目前还是采用的对齐y方向,导致x方向被缩小". Using
+  // ONLY the fit axis's own ratio here fixes that directly: the fit axis
+  // scales to EXACTLY availW or availH (whichever axis/'s own ratio was
+  // picked) and the perpendicular axis is left to overflow on purpose —
+  // that overflow is not a bug, it's what makes the group's OWN
+  // compactChildrenView.axis pan/scroll ever have anything to do.
+  var scale = fitHeight ? (availH/bbox.h) : (availW/bbox.w);
   // NEVER magnify past the children's own natural (authored) size — only
   // ever shrink an oversized group down to fit. Without this cap, a root
   // with just a couple of small/sparse children (a natural bbox far
@@ -3317,7 +3348,15 @@ function recomputeCompactChildrenView(parentId, viewportW, viewportH){
   // exactly the reported "节点非常大,严重突出屏幕,整个屏幕只能装下半个
   // 汉字". A too-small group instead just leaves real empty margin around
   // it (still centered via the same transform-origin), which is the
-  // correct, expected look for a mother with very few children.
+  // correct, expected look for a mother with very few children. This
+  // clamp alone is ALSO what keeps the fit axis itself from ever
+  // overflowing: whenever the raw ratio is already <=1 (a shrink), the
+  // fit axis lands EXACTLY on avail{W,H}, no overflow possible; whenever
+  // it's >1 (a magnify, natural size already smaller than the viewport),
+  // clamping to 1 leaves the fit axis at its own natural size, which by
+  // definition already fits inside avail{W,H} — so the fit axis can
+  // never overflow either way, with no need to ever consult the OTHER
+  // axis's ratio at all.
   scale = Math.min(scale, 1);
   compactChildrenView.scale = scale;
   compactChildrenView.axis = fitHeight ? 'x' : 'y';
@@ -4359,7 +4398,25 @@ function openInsertDialog(cfg){
   refreshInsertStatUI();
   insertOverlay.classList.add('show');
   insertBatchBadge.classList.toggle('show', !!cfg.batch);
-  setTimeout(function(){ insertSummaryEl.focus(); }, 0);
+  // "按➕和未归纳加号时...直接引导手机输入法弹出...长按节点编辑信息的时候
+  // 同样的窗口不要让输入法自动弹出,只是两个新建节点按钮要自动弹出" —
+  // scoped to 手机精致模式 only (desktop/手机原始模式 keep their prior
+  // always-focus-via-setTimeout behavior unchanged, since neither has a
+  // virtual keyboard to worry about popping unexpectedly): cbAddChild and
+  // cbAddToInbox (手机精致模式's only two entry points that ever pass
+  // mode:'child') get focused, long-press-edit (mode:'edit') does not.
+  // Calling focus() SYNCHRONOUSLY here (not the old setTimeout(fn,0),
+  // still used below for the non-compact path) is the actual fix for
+  // "不会弹出输入法" — mobile browsers only auto-show the virtual
+  // keyboard on a focus() call that runs synchronously within a real
+  // user-gesture's own event-handler stack; deferring it even by a 0ms
+  // timeout breaks that direct gesture->focus chain, so it silently
+  // fails to pop the keyboard even though the field IS now focused.
+  if(isCompactMode()){
+    if(cfg.mode==='child') insertSummaryEl.focus();
+  } else {
+    setTimeout(function(){ insertSummaryEl.focus(); }, 0);
+  }
 }
 function closeInsertDialog(){
   insertOverlay.classList.remove('show');
@@ -5345,7 +5402,19 @@ registerRailPanel(btnSearch, searchFlyout, function(){
   searchActiveIdx = -1;
   setTimeout(function(){ searchInput.focus(); },50);
 });
-document.getElementById('searchCancelBtn').addEventListener('click', closeAllRailPanels);
+document.getElementById('searchCancelBtn').addEventListener('click', function(){
+  // "搜索框取消以后,底部的按钮还是会往上平移" — same fix as
+  // commitSearchResult's own blur-before-close (see its comment): the
+  // keyboard is still up while searchInput holds focus, and closing the
+  // panel via closeAllRailPanels alone doesn't reliably force an
+  // IMMEDIATE blur in every browser, so the keyboard dismissing
+  // asynchronously afterward is what visually reads as #compactBar
+  // getting yanked upward on its own. Blurring here FIRST makes the
+  // keyboard start closing in the same frame as the panel's own close
+  // animation instead of racing it.
+  if(document.activeElement===searchInput) searchInput.blur();
+  closeAllRailPanels();
+});
 function escHtml(s){ return s.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
 function highlight(text, q){
   if(!q) return escHtml(text);
@@ -7290,15 +7359,22 @@ document.getElementById('cbMakeRoot').addEventListener('click', function(){
   selectedId = null;
   scheduleSave(); render();
 });
-// "去掉控件第一排最右边的...按钮,把里面的按钮全部放到底下向上拖拽出来的
-// 区域" — #compactBarExpand's max-height is dragged open/closed directly
-// via #compactBarHandle instead of a separate cbMore toggle button +
-// bottom-sheet overlay. Dragging measures real finger movement (dy) and
-// applies it 1:1 to max-height while the drag is live (no CSS
-// transition fighting the gesture — see .dragging's own transition:none
-// rule), then snaps to fully open or fully closed based on which side of
-// the halfway point the release landed on, with the normal .18s
-// transition restored for that final snap only.
+// "以前是按住两排按钮区域没有按钮的部分就可以拖出来,现在一定要碰到最底下
+// 短横线,和手机操作屏幕底下冲突了...按住没有按钮的区域就能拖出来" — the
+// drag gesture is now armed from a mousedown/touchstart ANYWHERE on
+// #compactBar's own background (rows 1-3's empty space, not just the
+// short #compactBarHandle bar), gated on the SAME "did this NOT start on
+// an actual control" exclusion list the click-to-collapse handler below
+// already uses — a real tap/drag on a button, the depth stepper, the
+// relax slider, or inside the random-button strip must never be
+// hijacked into arming this gesture instead of that control's own
+// normal behavior. #compactBarHandle itself is deliberately EXCLUDED
+// from that exclusion list (i.e. still a valid drag-start point too) so
+// the visible short-bar affordance keeps working exactly as before,
+// just no longer as the ONLY place a drag can start.
+function isCompactBarControl(target){
+  return !!target.closest('.compact-btn, #compactDepthCtl, #compactRelaxSlider, #compactRandomZone, #compactBarExpand');
+}
 var compactBarEl = document.getElementById('compactBar');
 var compactBarExpandEl = document.getElementById('compactBarExpand');
 var compactBarHandleEl = document.getElementById('compactBarHandle');
@@ -7347,54 +7423,49 @@ function setCompactBarExpandOpen(open){
   }
   // mouse path — works as-is on desktop/手机原始模式 and in any browser's
   // dev-tools touch emulation.
-  compactBarHandleEl.addEventListener('mousedown', function(ev){ beginDrag(ev.clientY); });
+  compactBarEl.addEventListener('mousedown', function(ev){
+    if(isCompactBarControl(ev.target)) return;
+    beginDrag(ev.clientY);
+  });
   window.addEventListener('mousemove', function(ev){ onMove(ev.clientY); });
   window.addEventListener('mouseup', endDrag);
-  // "改了一轮按钮分布以后,现在拖不出来了" — the handle's touch-action:none
-  // (needed so the browser's own scroll/refresh gestures never hijack a
-  // finger already dragging this handle) was ALWAYS paired with real
-  // touchstart/touchmove/touchend listeners everywhere else in this file
-  // that does a continuous single-finger drag (see the canvasWrap touch-
-  // to-mouse bridge's own comment: real touches on mobile only reliably
-  // synthesize a mousedown/click for a plain TAP, never a continuous
-  // mousemove stream for an actual drag) — this handle was accidentally
-  // left with ONLY the mouse listeners above, so touch-action:none simply
-  // suppressed the browser's default gesture on this element with nothing
-  // of this file's own to replace it, and the drag silently never worked
-  // on a real touchscreen. Real touch listeners fix that directly instead
-  // of routing through a synthetic-mouse-event bridge (unlike canvasWrap's
-  // own bridge, this handle has no OTHER gesture vocabulary sharing the
-  // same element that a synthetic mousedown could conflict with, so
-  // there's no reason to indirect through one here). touchstart calls
-  // preventDefault() (needs {passive:false} to be allowed to) specifically
-  // to suppress the browser's OWN delayed synthetic mousedown/mouseup/
-  // click it would otherwise still fire on this element after touchend —
-  // without that, releasing a real drag could immediately re-arm a phantom
-  // beginDrag()/endDrag() pair with no touchmove stream behind it.
-  compactBarHandleEl.addEventListener('touchstart', function(e){
-    if(e.touches.length!==1) return;
+  // real touch listeners (not a synthetic-mouse-event bridge) — see this
+  // block's own prior comment history: mobile browsers only reliably
+  // synthesize a mousedown/click for a plain TAP from a real touch, never
+  // a continuous mousemove stream for an actual drag, so a continuous
+  // gesture like this one needs its own touchstart/touchmove/touchend
+  // wired up directly. touchstart calls preventDefault() (needs
+  // {passive:false} to be allowed to) specifically to suppress the
+  // browser's OWN delayed synthetic mousedown/mouseup/click it would
+  // otherwise still fire after touchend — without that, releasing a real
+  // drag could immediately re-arm a phantom beginDrag()/endDrag() pair
+  // with no touchmove stream behind it.
+  compactBarEl.addEventListener('touchstart', function(e){
+    if(e.touches.length!==1 || isCompactBarControl(e.target)) return;
     e.preventDefault();
     beginDrag(e.touches[0].clientY);
   }, {passive:false});
-  compactBarHandleEl.addEventListener('touchmove', function(e){
+  compactBarEl.addEventListener('touchmove', function(e){
     if(!dragging || e.touches.length!==1) return;
     e.preventDefault();
     onMove(e.touches[0].clientY);
   }, {passive:false});
-  compactBarHandleEl.addEventListener('touchend', endDrag, {passive:true});
-  compactBarHandleEl.addEventListener('touchcancel', endDrag, {passive:true});
+  compactBarEl.addEventListener('touchend', endDrag, {passive:true});
+  compactBarEl.addEventListener('touchcancel', endDrag, {passive:true});
 })();
 // "点击上面空白区域要能自动折叠回去" — a plain tap (no real drag) on
 // #compactBar's own background — any of its rows' unoccupied space, NOT
 // one of its buttons/controls — collapses #compactBarExpand if it's
 // currently open. Reuses the exact same real-tap-vs-drag distinction the
-// handle's own gesture above already established (didPan-style: only a
-// CLICK with no intervening drag counts), via the browser's native click
+// drag gesture above already established (didPan-style: only a CLICK
+// with no intervening drag counts), via the browser's native click
 // event, which never fires after a touchmove/mousemove sequence long
-// enough to count as a real drag.
+// enough to count as a real drag. Shares isCompactBarControl's own
+// exclusion list so a tap on any real control never accidentally
+// collapses the expand area out from under it.
 compactBarEl.addEventListener('click', function(ev){
   if(!compactBarExpandOpen) return;
-  if(ev.target.closest('.compact-btn, #compactDepthCtl, #compactRelaxSlider, #compactRandomZone, #compactBarHandle, #compactBarExpand')) return;
+  if(isCompactBarControl(ev.target)) return;
   setCompactBarExpandOpen(false);
 });
 document.getElementById('cbMoreTheme').addEventListener('click', function(){ btnTheme.click(); });
