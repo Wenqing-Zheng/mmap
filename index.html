@@ -748,6 +748,19 @@
   html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame > .mm-frame,
   html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame > .mm-miniature-inner > .mm-frame{
     background:transparent!important;box-shadow:none!important;
+    /* "精致手机模式作为背景墙的节点不能显示边框,就算被选中也不能显示这个
+       蓝色边框" — .mm-selected's own outline (see its rule elsewhere in
+       this file) is a SEPARATE property from the background/box-shadow
+       already stripped above, so tapping the root's own background (a
+       leaf root's blank-area tap runs compactCycleNodeVis, which
+       unconditionally sets selectedId — see its own comment) still drew
+       a blue outline right on top of the invisible frame, even though
+       the frame itself has no fill/border to select AROUND. Scoped
+       identically to the two rules above (is-root.compact-root-hide-
+       frame only), so a normal non-root selected node's outline+glow are
+       completely untouched — "不是可见区域根节点的节点被选中需要正常
+       显示蓝色边框". */
+    outline:none!important;
   }
   html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame > .mm-frame > .mm-border-svg,
   html.mobile-compact-mode .mm-node.is-root.compact-root-hide-frame > .mm-miniature-inner > .mm-frame > .mm-border-svg{
@@ -1146,6 +1159,11 @@
       <button class="compact-btn" id="cbMakeRoot" title="以最近选中的节点为根节点视图（等价双击）">🟧</button>
     </div>
     <div id="compactBarRow2">
+      <div id="compactDepthCtl" title="默认最大可视深度">
+        <div id="compactDepthMinus">‹</div>
+        <div id="compactDepthValue">2</div>
+        <div id="compactDepthPlus">›</div>
+      </div>
       <button class="compact-btn" id="cbDragToggle" title="拖拽平移：开启后可拖动一级子节点">✋</button>
       <div id="compactRandomZone"></div>
       <button class="compact-btn" id="cbCenterVisibleChildren" title="把当前可见区域根节点的一级孩子整体平移到居中位置">🎯</button>
@@ -1186,11 +1204,6 @@
         <button class="compact-btn compact-btn-wide" id="cbMoreRaw" title="手机原始模式">📱 原始模式</button>
       </div>
       <div id="compactBarRow6">
-        <div id="compactDepthCtl" title="默认最大可视深度">
-          <div id="compactDepthMinus">‹</div>
-          <div id="compactDepthValue">2</div>
-          <div id="compactDepthPlus">›</div>
-        </div>
         <button class="compact-btn" id="cbMoreFit" title="回到全局">⛩</button>
       </div>
     </div>
@@ -4135,13 +4148,27 @@ function compactCycleNodeVis(n){
     // 1 (summary-only) — "触摸母节点...应该是三次循环...缺少仅展示summary
     // 的那一次". A leaf's vis is never floor-corrected, so reading the
     // cycle position off one instead keeps the full 0->1->2 rotation intact.
-    var ref = subtree.filter(function(x){ return !x.drilled; })[0] || n;
+    // compactIsBranch (not the raw x.drilled flag) is what decides "leaf
+    // vs floor-corrected container" both here and below — "刚新建节点
+    // 立刻🟧全屏一次再退出...这些节点就没有被影响可见性" was exactly a
+    // freshly-created, still-childless leaf that 🟧/double-tap had set
+    // n.drilled=true on (as part of becoming a fullscreen focus root,
+    // whether or not it actually has any children to drill into) — raw
+    // x.drilled treated that leaf as "a container that must stay
+    // visible" forever after, silently exempting it from every future
+    // batch cycle its true-leaf siblings kept participating in.
+    // compactIsBranch additionally requires actual A/B children to exist,
+    // so a childless node is correctly treated as a plain leaf here
+    // regardless of whatever drilled happened to get left at.
+    var ref = subtree.filter(function(x){ return !compactIsBranch(x); })[0] || n;
     var next = (ref.vis>=maxVis) ? 0 : ref.vis+1;
     subtree.forEach(function(x){ x.vis = next; });
-    // "所有已经展开孩子的节点，永远保持至少summary可见" — a drilled node
-    // in the batch must never land on vis=0 even though the rotation above
-    // would otherwise take it there in lockstep with its siblings.
-    subtree.forEach(function(x){ if(x.drilled && x.vis===0) x.vis = 1; });
+    // "所有已经展开孩子的节点，永远保持至少summary可见" — a node that's
+    // actually SHOWING drilled-open children (compactIsBranch, not just
+    // its own possibly-stale drilled flag) must never land on vis=0 even
+    // though the rotation above would otherwise take it there in
+    // lockstep with its siblings.
+    subtree.forEach(function(x){ if(compactIsBranch(x) && x.vis===0) x.vis = 1; });
   } else {
     cycleVis(n);
   }
@@ -6459,8 +6486,16 @@ function symmetricUnitPositions(n){
   // 7+: "近似正方形排列...向上寻找平方数然后视图填满它的布局" — smallest
   // side*side grid that fits every node (7/8/9 all land on a 3x3 grid),
   // filled row-major and centered on the mother; any leftover cells in
-  // the grid's last row are simply left empty.
-  var side = Math.ceil(Math.sqrt(n));
+  // the grid's last row are simply left empty. Capped at side=4 (16
+  // nodes) — "平方数最多到4*4,超过16个节点的时候,不能再寻找下一个平方数,
+  // 而是按照4个一排,往下排列,没有上限". Past that cap the column count
+  // freezes at 4 and the grid just grows taller (more rows) instead of
+  // wider, since a 5-wide+ row on a phone screen is exactly what starts
+  // forcing the font small enough to become illegible — capping columns
+  // is what keeps every row's own per-node width (and therefore its
+  // font size) from shrinking further no matter how many nodes there
+  // are in total.
+  var side = Math.min(4, Math.ceil(Math.sqrt(n)));
   var outg = [];
   for(var k=0;k<n;k++){
     var row = Math.floor(k/side), col = k%side;
@@ -6485,29 +6520,59 @@ function symmetrizeChildrenOf(parentId){
     var b = k.drilled ? containerSize(k) : computeNodeBox(k);
     return {node:k, r:boxRadius(b.w, b.h)};
   });
-  var maxD = Math.max.apply(null, boxes.map(function(b){ return b.r*2; }));
   var units = symmetricUnitPositions(n);
-  // scale by the arrangement's OWN closest pairwise unit-distance, not a
-  // fixed assumed spacing of 1 — the n===6 star+center layout's own
-  // center-to-ring distance is ~0.85, tighter than its ring-to-ring edges,
-  // so scaling off a flat "1 unit apart" assumption would let the center
-  // node crowd its neighbors closer than every other pair in that same
-  // arrangement.
-  var minUnitDist = Infinity;
+  // "节点间距应该要刚好没有触发节点防碰撞收缩机制" — reuses
+  // computeCrowdScale's OWN target-center-distance formula (avgR*(1+2*
+  // relaxStrength) — see that function's own comment for the exact
+  // 0->1x/1->3x-avgR mapping this mirrors) instead of the old fixed 14%
+  // gap ratio scaled off a single global maxD (the largest child's own
+  // diameter, which over-spaced every OTHER, smaller pair whenever sizes
+  // differed). Solving for the smallest uniform cellSize that keeps
+  // EVERY pair's real (scaled) distance at or above THAT pair's own
+  // target — using each pair's own average radius, not one shared max —
+  // places every pair exactly at (never below) the same crowd-avoidance
+  // threshold computeCrowdScale itself enforces, so a fresh reset can
+  // never immediately re-trigger its own shrink.
+  var relaxMult = 1 + 2*appParams.relaxStrength;
+  var cellSize = 0;
   for(var i=0;i<n;i++){
     for(var j=i+1;j<n;j++){
       var dx=units[i].x-units[j].x, dy=units[i].y-units[j].y;
-      var d = Math.sqrt(dx*dx+dy*dy);
-      if(d<minUnitDist) minUnitDist = d;
+      var unitDist = Math.sqrt(dx*dx+dy*dy);
+      if(unitDist<=0) continue;
+      var avgR = (boxes[i].r+boxes[j].r)/2;
+      var needed = (avgR*relaxMult)/unitDist;
+      if(needed>cellSize) cellSize = needed;
     }
   }
-  if(!isFinite(minUnitDist) || minUnitDist<=0) minUnitDist = 1;
-  var cellSize = (maxD*1.14)/minUnitDist; // same 14% gap ratio this file's other ring/grid placement math already uses
+  // n===1 has no pair to size off at all — position is (0,0) regardless
+  // of cellSize (symmetricUnitPositions(1) is always {x:0,y:0}), so any
+  // positive fallback here is inert; kept only so cellSize is never 0/NaN.
+  if(!isFinite(cellSize) || cellSize<=0){
+    cellSize = Math.max.apply(null, boxes.map(function(b){ return b.r*2; })) || 1;
+  }
   boxes.forEach(function(b, i){
     b.node.px = units[i].x*cellSize;
     b.node.py = units[i].y*cellSize;
     b.node.placed = true;
   });
+  // "母节点的画布再根据子节点分布范围重新定义,没有被节点边缘覆盖的画布就
+  // 丢掉不要了,而不是让节点占满画布" — the SAME flag 🎯
+  // (btnCenterVisibleChildren) already sets to make containerSize skip
+  // its own idealR floor for a mother whose children are known to
+  // already sit in a deliberate, centered arrangement (see containerSize's
+  // own comment on n.centeredFit) — the fresh symmetric grid just placed
+  // above is exactly that kind of arrangement, so the mother's own canvas
+  // should hug the real actualHalfW/actualHalfH spread the children just
+  // settled into instead of getting padded out to idealR's much larger
+  // "if these were arranged in a ring" ESTIMATE — that estimate-driven
+  // padding is exactly what produced "画布中间大片空白" whenever a mother
+  // had only a few small children. Applies to every parent this function
+  // is ever called on (both ⭕️'s single level and 💣's full-tree
+  // recursion through symmetrizeAllRecursive below), consistent with
+  // centeredFit's own "permanent once set, never auto-reset" convention.
+  var mother = node(parentId);
+  if(mother) mother.centeredFit = true;
 }
 
 /* depth-first, children-before-parent: symmetrize every node's direct
@@ -7234,6 +7299,7 @@ document.getElementById('cbMakeRoot').addEventListener('click', function(){
 // rule), then snaps to fully open or fully closed based on which side of
 // the halfway point the release landed on, with the normal .18s
 // transition restored for that final snap only.
+var compactBarEl = document.getElementById('compactBar');
 var compactBarExpandEl = document.getElementById('compactBarExpand');
 var compactBarHandleEl = document.getElementById('compactBarHandle');
 var compactBarExpandOpen = false;
@@ -7255,33 +7321,82 @@ function setCompactBarExpandOpen(open){
 }
 (function(){
   var startY=0, startHeight=0, naturalHeight=0, dragging=false;
-  compactBarHandleEl.addEventListener('mousedown', function(ev){
-    startY = ev.clientY;
+  function beginDrag(clientY){
+    startY = clientY;
     naturalHeight = compactBarExpandNaturalHeight();
     startHeight = compactBarExpandOpen ? naturalHeight : 0;
     dragging = true;
     compactBarHandleEl.classList.add('dragging');
     compactBarExpandEl.classList.add('dragging');
-  });
-  function onMove(ev){
+  }
+  function onMove(clientY){
     if(!dragging) return;
     // dragging UP (finger moving to smaller clientY) must INCREASE the
-    // revealed height — "向上拖拽展开" — hence startY-ev.clientY, not
-    // the more common ev.clientY-startY.
-    var dy = startY-ev.clientY;
+    // revealed height — "向上拖拽展开" — hence startY-clientY, not
+    // the more common clientY-startY.
+    var dy = startY-clientY;
     var h = clamp(startHeight+dy, 0, naturalHeight);
     compactBarExpandEl.style.maxHeight = h+'px';
   }
-  function onUp(){
+  function endDrag(){
     if(!dragging) return;
     dragging = false;
     compactBarHandleEl.classList.remove('dragging');
     var cur = parseFloat(compactBarExpandEl.style.maxHeight) || 0;
     setCompactBarExpandOpen(cur > naturalHeight/2);
   }
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
+  // mouse path — works as-is on desktop/手机原始模式 and in any browser's
+  // dev-tools touch emulation.
+  compactBarHandleEl.addEventListener('mousedown', function(ev){ beginDrag(ev.clientY); });
+  window.addEventListener('mousemove', function(ev){ onMove(ev.clientY); });
+  window.addEventListener('mouseup', endDrag);
+  // "改了一轮按钮分布以后,现在拖不出来了" — the handle's touch-action:none
+  // (needed so the browser's own scroll/refresh gestures never hijack a
+  // finger already dragging this handle) was ALWAYS paired with real
+  // touchstart/touchmove/touchend listeners everywhere else in this file
+  // that does a continuous single-finger drag (see the canvasWrap touch-
+  // to-mouse bridge's own comment: real touches on mobile only reliably
+  // synthesize a mousedown/click for a plain TAP, never a continuous
+  // mousemove stream for an actual drag) — this handle was accidentally
+  // left with ONLY the mouse listeners above, so touch-action:none simply
+  // suppressed the browser's default gesture on this element with nothing
+  // of this file's own to replace it, and the drag silently never worked
+  // on a real touchscreen. Real touch listeners fix that directly instead
+  // of routing through a synthetic-mouse-event bridge (unlike canvasWrap's
+  // own bridge, this handle has no OTHER gesture vocabulary sharing the
+  // same element that a synthetic mousedown could conflict with, so
+  // there's no reason to indirect through one here). touchstart calls
+  // preventDefault() (needs {passive:false} to be allowed to) specifically
+  // to suppress the browser's OWN delayed synthetic mousedown/mouseup/
+  // click it would otherwise still fire on this element after touchend —
+  // without that, releasing a real drag could immediately re-arm a phantom
+  // beginDrag()/endDrag() pair with no touchmove stream behind it.
+  compactBarHandleEl.addEventListener('touchstart', function(e){
+    if(e.touches.length!==1) return;
+    e.preventDefault();
+    beginDrag(e.touches[0].clientY);
+  }, {passive:false});
+  compactBarHandleEl.addEventListener('touchmove', function(e){
+    if(!dragging || e.touches.length!==1) return;
+    e.preventDefault();
+    onMove(e.touches[0].clientY);
+  }, {passive:false});
+  compactBarHandleEl.addEventListener('touchend', endDrag, {passive:true});
+  compactBarHandleEl.addEventListener('touchcancel', endDrag, {passive:true});
 })();
+// "点击上面空白区域要能自动折叠回去" — a plain tap (no real drag) on
+// #compactBar's own background — any of its rows' unoccupied space, NOT
+// one of its buttons/controls — collapses #compactBarExpand if it's
+// currently open. Reuses the exact same real-tap-vs-drag distinction the
+// handle's own gesture above already established (didPan-style: only a
+// CLICK with no intervening drag counts), via the browser's native click
+// event, which never fires after a touchmove/mousemove sequence long
+// enough to count as a real drag.
+compactBarEl.addEventListener('click', function(ev){
+  if(!compactBarExpandOpen) return;
+  if(ev.target.closest('.compact-btn, #compactDepthCtl, #compactRelaxSlider, #compactRandomZone, #compactBarHandle, #compactBarExpand')) return;
+  setCompactBarExpandOpen(false);
+});
 document.getElementById('cbMoreTheme').addEventListener('click', function(){ btnTheme.click(); });
 document.getElementById('cbMoreImport').addEventListener('click', function(){ document.getElementById('btnImport').click(); });
 document.getElementById('cbMoreExport').addEventListener('click', function(){ document.getElementById('btnExport').click(); });
@@ -7709,6 +7824,14 @@ compactDepthPlusEl.addEventListener('click', function(){
   appParams.maxAutoDepth = clamp(appParams.maxAutoDepth+1, MAX_AUTO_DEPTH_MIN, MAX_AUTO_DEPTH_MAX);
   refreshCompactDepthUI(); refreshRailDepthUI(); saveParams();
   setExpandedToDepth(state.focusId, appParams.maxAutoDepth);
+  scheduleSave(); render(); resyncRootView();
+});
+// "中间显示数字,同时按下表示刷新设置" — mirrors desktop's own
+// railDepthValueEl click exactly (see its own comment): forces the SAME
+// depth check the ‹/› thirds apply, WITHOUT changing maxAutoDepth itself.
+compactDepthValueEl.addEventListener('click', function(){
+  setExpandedToDepth(state.focusId, appParams.maxAutoDepth);
+  collapseBeyondDepth(state.focusId, appParams.maxAutoDepth);
   scheduleSave(); render(); resyncRootView();
 });
 compactRelaxSliderEl.addEventListener('input', function(){
