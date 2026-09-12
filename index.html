@@ -902,11 +902,6 @@
     gap:clamp(3px,1vw,6px);
   }
   .compact-stack-cluster .compact-btn{width:100%;height:100%;}
-  /* ✳️'s own "另一个绿色新建按钮" — visually distinct from ➕ (both create a
-     node, but ✳️ specifically targets the 未归纳 inbox) via the same green
-     already used elsewhere for a "constructive/additive" action (see
-     .ctv-move-btn.ctv-move-child/-sibling, #mm-cat-badge B). */
-  .compact-btn-green{background:#2ea88a;color:#fff;border-color:#2ea88a;}
   /* ⬅️/⬆️/⬇️/➡️ nav cluster: a self-contained 2x3 grid (⬅️ spanning both
      rows on the far left, ⬆️ top-middle, ⬇️ bottom-middle, ➡️ spanning
      both rows on the right) — ⬅️ mirrors ➡️'s own full-height span so
@@ -1223,7 +1218,7 @@
       </div>
       <div class="compact-stack-cluster">
         <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
-        <button class="compact-btn compact-btn-green" id="cbAddToInbox" title="新建节点到未归纳节点">✳️</button>
+        <button class="compact-btn" id="cbAddToInbox" title="新建节点到未归纳节点">✳️</button>
       </div>
     </div>
     <div id="compactBarRow2">
