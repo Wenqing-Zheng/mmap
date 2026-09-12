@@ -718,7 +718,8 @@
      across phone widths without a separate breakpoint per device. ============================================================ */
   #compactBar, #compactTreeSheet, #compactSearchSheet, #compactRootLabel{display:none;}
   html.mobile-compact-mode #rail, html.mobile-compact-mode #mobileToolbar,
-  html.mobile-compact-mode #treeFlyout, html.mobile-compact-mode #randomFlyout{
+  html.mobile-compact-mode #treeFlyout, html.mobile-compact-mode #randomFlyout,
+  html.mobile-compact-mode #paramsFlyout{
     display:none;
   }
   /* #searchFlyout is REUSED as-is (its bottom-sheet CSS already applies
@@ -727,13 +728,25 @@
      so its full desktop logic (search-as-you-type) works unmodified
      instead of being duplicated for a third time. #paramsFlyout has NO
      compact-mode entry point at all — "手机精致模式不开放...布局参数
-     按钮,字体大小按钮" — desktop's own #rail keeps it unchanged. */
-  html.mobile-compact-mode #searchFlyout, html.mobile-compact-mode #paramsFlyout{
+     按钮,字体大小按钮" — desktop's own #rail keeps it unchanged, and
+     (unlike #searchFlyout) it's folded into the display:none list above
+     alongside #randomFlyout/#treeFlyout instead of getting its own
+     bottom-sheet repositioning here: with no compact-mode entry point at
+     all to ever add its OWN .open class, the repositioning rule that
+     used to apply to it here was pure dead weight that could only ever
+     have been a LATENT risk (an absolutely-positioned, bottom:0,
+     z-index:850 box with no display:none to guarantee it never renders)
+     rather than a needed style — "重置位置以及下面的四个emoji按钮...不应该
+     出现在精致手机版最下方...应该是哪个代码管理导致版面泄漏" is exactly
+     that latent risk surfacing. display:none removes it from rendering
+     categorically, the same guarantee #randomFlyout/#treeFlyout already
+     had. */
+  html.mobile-compact-mode #searchFlyout{
     left:0;right:0;top:auto;bottom:0;width:100%;height:56vh;max-height:56vh;
     border-right:none;border-top:1px solid var(--panel-border);border-radius:14px 14px 0 0;
     transform:translateY(100%);z-index:850;
   }
-  html.mobile-compact-mode #searchFlyout.open, html.mobile-compact-mode #paramsFlyout.open{
+  html.mobile-compact-mode #searchFlyout.open{
     transform:translateY(0);
   }
   html.mobile-compact-mode #app{flex-direction:column;}
@@ -854,6 +867,11 @@
   .compact-btn.cbdrag-mid{background:#5b8dff;color:#fff;border-color:#5b8dff;}
   .compact-btn.cbdrag-fast{background:#1a3fc4;color:#fff;border-color:#1a3fc4;}
   .compact-btn.cbdrag-slow{background:#aac4ff;color:#12295c;border-color:#aac4ff;}
+  /* 5th cycle state, red instead of blue — "再它们后面再加一个红色" — a
+     deliberately different hue (not just another blue shade) since this
+     state repurposes the arrows for a completely different action
+     (scrolling the view) rather than another move-speed. */
+  .compact-btn.cbdrag-scroll{background:#d1495b;color:#fff;border-color:#d1495b;}
   /* search+tree cluster: "tree view按钮放在搜索按钮正下方" — same
      stacked-pair pattern as .compact-nav-cluster's own up/down pairing,
      just a single column instead of nav-cluster's extra spanning-column
@@ -1040,6 +1058,15 @@
   .ctv-move-btn.ctv-move-pick.ctv-move-dimmed{background:#9aa0ad;}
   .ctv-move-btn.ctv-move-pick.ctv-move-picked{background:#4361ee;box-shadow:0 0 0 2px #fff, 0 0 0 3.5px #4361ee;}
   .ctv-move-btn.ctv-move-child, .ctv-move-btn.ctv-move-sibling{background:#2ea88a;}
+  /* "每一排最右边,兄弟按钮的右边,还有额外出现一个小x按钮,红色正方形和
+     其他三个按钮同等高度" — a square (not the pill-shaped padding the
+     other three ctv-move-btn use), sized off the SAME line-height so it
+     visually matches their height exactly despite the different shape. */
+  .ctv-move-btn.ctv-move-delete{
+    background:#d1495b;padding:0;width:clamp(22px,5.6vw,26px);
+    display:flex;align-items:center;justify-content:center;
+    font-size:clamp(13px,3.2vw,15px);line-height:1;
+  }
   /* long-press-drag-to-reparent visuals, mirroring desktop's own
      .tv-drop-line/.tv-row.tv-drop-inside/.tv-row.tv-dragging exactly (see
      attachTreeRowDrag) — "拖拽到其他根节点下方,就像电脑版一样,有一个虚线和
@@ -1415,8 +1442,26 @@ var COMPACT_GROUP_EDGE_GAP = 14; // "留一条窄缝隙" — px of breathing roo
    （理论上缩放比例不限）". */
 var SCALE_NOKIDS_DEFAULT = 1.0, SCALE_KIDS_DEFAULT = 2.0;
 var SCALE_GAUGE_MIN = 0.1, SCALE_GAUGE_MAX = 10.0;
-function scaleXFor(n){ return (n.drilled ? n.scaleXKids : n.scaleXNoKids); }
-function scaleYFor(n){ return (n.drilled ? n.scaleYKids : n.scaleYNoKids); }
+// "点击一个一级子节点,然后🟧全屏,再⬆️退出来,会发现这个节点变成大小2.0x
+// 了" — SCALE_KIDS_DEFAULT (2.0) vs SCALE_NOKIDS_DEFAULT (1.0) is a
+// deliberate default (a container's "natural" size has traditionally
+// rendered larger than a plain leaf's), but scaleXFor/scaleYFor used to
+// switch to the Kids pair based on the RAW n.drilled flag alone — and
+// 🟧/double-tap/search-result-jump/tree-view-tag-jump all unconditionally
+// set n.drilled=true the moment a node becomes the focus root, even for
+// a genuinely childless leaf (which has nothing to actually drill into).
+// That leaf's rendered size then permanently jumped to the 2x "Kids"
+// default the FIRST time it was ever made a focus root, and silently
+// stayed there forever after (nothing ever resets drilled back to false
+// for it) — matching exactly "已经放大过的...再🟧⬆️一次,不会再次放大"
+// (drilled was already true, so a later 🟧 sets a flag that's already
+// set — no new size change to observe). children(n.id).length (not just
+// n.drilled) is what actually decides "is this rendering as a
+// container", so gating on BOTH here is the one-place fix instead of
+// auditing/patching every one of this file's many n.drilled=true call
+// sites individually.
+function scaleXFor(n){ return (n.drilled && children(n.id).length) ? n.scaleXKids : n.scaleXNoKids; }
+function scaleYFor(n){ return (n.drilled && children(n.id).length) ? n.scaleYKids : n.scaleYNoKids; }
 
 // ---- user-adjustable layout params (persisted, editable from the left rail) ----
 var MAX_AUTO_DEPTH_MIN = 1, MAX_AUTO_DEPTH_MAX = 6, MAX_AUTO_DEPTH_DEFAULT = 2;
@@ -4370,7 +4415,7 @@ document.getElementById('insertSizeStepper').addEventListener('click', function(
   if(pendingInsert.mode==='edit'){
     var n = pendingInsert.node;
     pushUndo();
-    if(n.drilled){ n.scaleXKids*=factor; n.scaleYKids*=factor; } else { n.scaleXNoKids*=factor; n.scaleYNoKids*=factor; }
+    if(n.drilled && children(n.id).length){ n.scaleXKids*=factor; n.scaleYKids*=factor; } else { n.scaleXNoKids*=factor; n.scaleYNoKids*=factor; }
     scheduleSave(); render();
   } else {
     pendingInsertSizeMult *= factor;
@@ -4691,7 +4736,7 @@ document.addEventListener('keydown', function(e){
       // 当前值" — not the old ~1.259x log-step (100^(1/10)) inherited from
       // the discrete sizeLevel system.
       var factor = e.key==='-' ? 0.9 : 1.1;
-      if(curForZoom.drilled){
+      if(curForZoom.drilled && children(curForZoom.id).length){
         curForZoom.scaleXKids *= factor; curForZoom.scaleYKids *= factor;
       } else {
         curForZoom.scaleXNoKids *= factor; curForZoom.scaleYNoKids *= factor;
@@ -5040,11 +5085,22 @@ canvasWrap.addEventListener('mousedown', function(e){
    at all is a blank-area long-press) and a root WITH children, long-
    pressed on the blank margin around them rather than on any specific
    child. */
+/* tap-to-cycle-visibility / long-press-to-edit on the root's own blank
+   background — "彻底删除触摸滑动的功能,修改成用上下按钮控制...通过彻底
+   禁用一切滑动功能,希望能进一步改善案件卡死的问题". The single-finger
+   PAN this function used to also do (dragging compactChildrenView.offset
+   directly off dx/dy) is REMOVED entirely — mobile browsers' own touch-
+   gesture recognition for a continuous drag was unreliable/janky at high
+   node counts ("非常卡,滑动识别不准确,且会导致其他按钮卡死") and is
+   replaced by 🖐️'s new red scroll-mode + ⬆️⬇️⬅️➡️ buttons instead (see
+   compactDragMode/COMPACT_DRAG_SPEEDS' own comment), which move
+   compactChildrenView.offset in fixed steps with no gesture-recognition
+   involved at all. A LONG press (openInsertDialog) still works exactly
+   as before — that's a discrete timer+release action, not a drag, so it
+   was never part of the "卡" complaint. */
 function startCompactGroupPan(ev, rootNode){
   var startX=ev.clientX, startY=ev.clientY;
-  var startOffX=compactChildrenView.offsetX, startOffY=compactChildrenView.offsetY;
-  var canPan = !!compactChildrenView.axis; // no axis -> nothing TO pan, but the long-press-edit below must still work
-  var didPan = false;
+  var moved = false;
   var longPressTimer = null, longPressFired = false;
   function clearLongPress(){ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; } }
   longPressTimer = setTimeout(function(){
@@ -5054,34 +5110,31 @@ function startCompactGroupPan(ev, rootNode){
   function onMove(e){
     if(longPressFired) return; // openInsertDialog already took over
     var dx=e.clientX-startX, dy=e.clientY-startY;
-    if(!didPan && Math.abs(dx)+Math.abs(dy)<4) return;
-    if(!didPan) clearLongPress(); // a real drag starting cancels the pending long-press-edit, same as compactNodeMousedown's own onMove guard
-    didPan = true;
-    if(!canPan) return; // no axis to actually pan along — the movement above only served to cancel the long-press
-    var vis = visibleCanvasRect();
-    if(compactChildrenView.axis==='x') compactChildrenView.offsetX = startOffX+dx;
-    else compactChildrenView.offsetY = startOffY+dy;
-    clampCompactChildrenOffset(vis.width, vis.height);
-    render();
+    if(!moved && Math.abs(dx)+Math.abs(dy)<4) return;
+    // a real finger-slide starting cancels the pending long-press-edit
+    // and suppresses the tap-to-cycle-visibility this gesture would
+    // otherwise run on release — same "an accidental slide is not a
+    // tap" guard compactNodeMousedown's own onMove already uses — but,
+    // unlike the old version, no longer pans anything in response.
+    moved = true;
+    clearLongPress();
   }
   function onUp(){
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
     clearLongPress();
-    if(longPressFired) return; // openInsertDialog already took over
-    if(!didPan){
-      // "触摸可见区域根节点(背景墙)...跟节点位置上整个背景墙都是能激活
-      // 这个节点的正常可见性切换功能" — a plain tap on the root's own
-      // blank background (no pan, no long-press) now runs the exact same
-      // visibility-cycle compactNodeTap already runs for any OTHER node,
-      // just reached via the background instead of a frame/chip that the
-      // root doesn't visually have (compact-root-hide-frame). Double-tap
-      // is deliberately NOT handled here — the root is already ITS OWN
-      // focus, so "double-tap makes it the root" would be a no-op, and
-      // #canvasWrap's own dblclick-adjacent gestures elsewhere in this
-      // file don't apply to blank-background taps either.
-      compactCycleNodeVis(rootNode);
-    }
+    if(longPressFired || moved) return; // openInsertDialog already took over, or this was a finger-slide, not a tap
+    // "触摸可见区域根节点(背景墙)...跟节点位置上整个背景墙都是能激活
+    // 这个节点的正常可见性切换功能" — a plain tap on the root's own
+    // blank background (no long-press, no slide) runs the exact same
+    // visibility-cycle compactNodeTap already runs for any OTHER node,
+    // just reached via the background instead of a frame/chip that the
+    // root doesn't visually have (compact-root-hide-frame). Double-tap
+    // is deliberately NOT handled here — the root is already ITS OWN
+    // focus, so "double-tap makes it the root" would be a no-op, and
+    // #canvasWrap's own dblclick-adjacent gestures elsewhere in this
+    // file don't apply to blank-background taps either.
+    compactCycleNodeVis(rootNode);
   }
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
@@ -7197,15 +7250,29 @@ var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge at 中速 (mult=
 // tapped again with no drag in between) still just advances normally,
 // since compactDragConsumed only ever gets set by compactMoveSelected
 // itself.
-var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow'];
+// "彻底删除触摸滑动的功能,修改成用上下按钮控制...🖐️有3种蓝色,再它们后面
+// 再加一个红色,也就是3+1+1=5次案件循环" — 'scroll' is the 5th state,
+// appended after 'slow' so the cycle stays off→fast→mid→slow→scroll→off.
+// It repurposes ⬆️⬇️⬅️➡️ a SECOND way: not to nudge a node's px/py (that's
+// what fast/mid/slow still do) but to pan compactChildrenView itself — the
+// same offsetX/offsetY a live-finger touch-drag used to write directly,
+// before that gesture was removed entirely for being "非常卡,滑动识别不
+// 准确,且会导致其他按钮卡死". Unlike fast/mid/slow, repeated scrolling one
+// screen at a time is the whole point of this mode, so it deliberately
+// does NOT set compactDragConsumed — a 🖐️ tap right after a scroll still
+// just advances to 'off' normally, it never short-circuits early the way
+// the move-modes do.
+var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow', 'scroll'];
 var COMPACT_DRAG_MULT = {mid:1, fast:25, slow:1/5};
+var COMPACT_SCROLL_STEP = BASE_DIAM*0.6; // one deliberate "page" of scroll per tap, bigger than a single node-nudge step
 var compactDragMode = 'off';
 var compactDragConsumed = false;
 var cbDragToggleEl = document.getElementById('cbDragToggle');
 function refreshCbDragToggleUI(){
-  cbDragToggleEl.classList.remove('active', 'cbdrag-mid', 'cbdrag-fast', 'cbdrag-slow');
+  cbDragToggleEl.classList.remove('active', 'cbdrag-mid', 'cbdrag-fast', 'cbdrag-slow', 'cbdrag-scroll');
   if(compactDragMode!=='off') cbDragToggleEl.classList.add('cbdrag-'+compactDragMode);
-  cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：快速→中速→慢速）'
+  cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：快速→中速→慢速→滚动）'
+    : compactDragMode==='scroll' ? '屏幕滚动中（红色）：⬆️⬇️⬅️➡️滚动可见子节点区域（横向排版时⬅️➡️才有效）；点击关闭'
     : '拖拽平移中（'+({mid:'中速', fast:'快速', slow:'慢速'})[compactDragMode]+'）：点击切换下一速度，或移动一次节点后再点击关闭';
 }
 cbDragToggleEl.addEventListener('click', function(){
@@ -7239,10 +7306,31 @@ function compactMoveSelected(dx, dy){
   compactDragConsumed = true; // arms the next 🖐️ tap to go straight to 'off' instead of advancing
   scheduleSave(); render();
 }
+// red 'scroll' state's own arrow-button handler — pans compactChildrenView
+// by one COMPACT_SCROLL_STEP instead of nudging a node. "按⬅️➡️也表示屏幕
+// 左右滚动,只不过在子节点数值排版的时候左右滚动无效,不起作用": ⬅️➡️ only
+// ever does anything when the CURRENT layout's own scrollable axis is 'x'
+// (recomputeCompactChildrenView already decided this per-render based on
+// which axis overflows the viewport) — on a vertically-scrollable or
+// non-scrollable layout they're a deliberate, silent no-op, exactly like
+// ⬆️⬇️ are whenever axis is 'x' instead of 'y'. Does NOT set
+// compactDragConsumed — repeated scrolling is the expected usage of this
+// mode, so a 🖐️ tap right after should still just advance the cycle
+// normally rather than short-circuiting to 'off'.
+function compactScrollView(dx, dy){
+  if(dx!==0 && compactChildrenView.axis!=='x') return;
+  if(dy!==0 && compactChildrenView.axis!=='y') return;
+  var vis = visibleCanvasRect();
+  compactChildrenView.offsetX -= dx*COMPACT_SCROLL_STEP;
+  compactChildrenView.offsetY -= dy*COMPACT_SCROLL_STEP;
+  clampCompactChildrenOffset(vis.width, vis.height);
+  render();
+}
 
 cbSearchEl.addEventListener('click', function(){ btnSearch.click(); });
 cbTreeEl.addEventListener('click', function(){ openCompactTreeSheet(); });
 cbNavUpEl.addEventListener('click', function(){
+  if(compactDragMode==='scroll'){ compactScrollView(0, -1); return; }
   if(compactDragMode!=='off'){ compactMoveSelected(0, -1); return; }
   // "只能可见区域往上跳跃一级,而不是直接到全局根节点" — moves the visible
   // root to its own immediate parent (NOT all the way to state.rootId).
@@ -7258,6 +7346,7 @@ cbNavUpEl.addEventListener('click', function(){
   scheduleSave(); render();
 });
 cbNavDownEl.addEventListener('click', function(){
+  if(compactDragMode==='scroll'){ compactScrollView(0, 1); return; }
   if(compactDragMode!=='off'){ compactMoveSelected(0, 1); return; }
   // pops compactNavStack and returns to whatever node ⬆️ most recently
   // left — skipping (not crashing on) any popped id whose node has since
@@ -7277,6 +7366,7 @@ cbNavDownEl.addEventListener('click', function(){
   scheduleSave(); render();
 });
 cbNavSiblingEl.addEventListener('click', function(){
+  if(compactDragMode==='scroll'){ compactScrollView(1, 0); return; }
   if(compactDragMode!=='off'){ compactMoveSelected(1, 0); return; }
   var curId = state.focusId;
   var pn = parentOf(curId);
@@ -7292,6 +7382,7 @@ cbNavSiblingEl.addEventListener('click', function(){
 // ⬅️ mirrors ➡️ exactly but cycles to the PREVIOUS sibling instead of the
 // next one — "高度和➡️对称,功能一样,只不过是相反方向切换孩子".
 cbNavPrevSiblingEl.addEventListener('click', function(){
+  if(compactDragMode==='scroll'){ compactScrollView(-1, 0); return; }
   if(compactDragMode!=='off'){ compactMoveSelected(-1, 0); return; }
   var curId = state.focusId;
   var pn = parentOf(curId);
@@ -7582,6 +7673,12 @@ function openTreeDeleteMenu(x, y, id){
   addItem('删除此节点（子节点保留，提升为上级）', true, function(){
     pushUndo();
     deleteNodeOnly(id);
+    // "挪动"模式's own picked source can't survive a delete of the node
+    // it was pointing at — clear it so a later 孩子/兄弟 tap doesn't try
+    // to move an id that no longer exists (commitTreeMove already
+    // no-ops on a missing node, but leaving the stale pick would keep
+    // showing it as "picked" — ctv-move-picked — on a row that's gone).
+    if(treeMoveSourceId===id) treeMoveSourceId = null;
     scheduleSave();
     renderCompactTreeView();
     render();
@@ -7589,7 +7686,12 @@ function openTreeDeleteMenu(x, y, id){
   addItem('删除此节点及全部子树', true, function(){
     if(!confirm('删除节点"'+summary+'"及其全部子节点？此操作可用 ⌘Z 撤销。')) return;
     pushUndo();
+    var deletedIds = subtreeIds(id);
     deleteSubtree(id);
+    // same cleanup as above, but checked against the WHOLE deleted
+    // subtree — the picked source could be a descendant of `id`, not
+    // just `id` itself.
+    if(treeMoveSourceId && deletedIds.indexOf(treeMoveSourceId)!==-1) treeMoveSourceId = null;
     scheduleSave();
     renderCompactTreeView();
     render();
@@ -7862,6 +7964,27 @@ function renderCompactTreeView(){
         commitTreeMove(treeMoveSourceId, id, 'sibling');
       });
       row.appendChild(siblingBtn);
+      // "每一排最右边...还有额外出现一个小x按钮...表示删除节点或者它对应的
+      // 子树。删除有弹窗提示" — reuses openTreeDeleteMenu as-is (the SAME
+      // 删除此节点/删除此节点及全部子树 two-option menu the tag's own
+      // long-press already opens — see its own comment), just reached via
+      // a direct tap here instead of a long-press, since 挪动 mode is
+      // already a deliberate "editing the tree structure" context where a
+      // quick tap-to-delete reads as intentional rather than accidental.
+      // The ultimate root has no delete button at all (matches
+      // openTreeDeleteMenu's own id===state.rootId guard, and every other
+      // per-row action here that already treats the root specially).
+      if(!isTreeRoot){
+        var deleteBtn = document.createElement('span');
+        deleteBtn.className = 'ctv-move-btn ctv-move-delete';
+        deleteBtn.textContent = '×';
+        deleteBtn.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          var r = row.getBoundingClientRect();
+          openTreeDeleteMenu(r.right, r.bottom, id);
+        });
+        row.appendChild(deleteBtn);
+      }
     }
     // registered BEFORE the expand/collapse click handler below so its
     // own click-suppression (after a completed long-press-drag) runs
