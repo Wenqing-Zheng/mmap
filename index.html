@@ -986,13 +986,19 @@
      transition comes back for the SNAP-to-open-or-closed settle once the
      finger lifts. */
   #compactBarExpand.dragging{transition:none;}
-  #compactBarRow4, #compactBarRow5, #compactBarRow6{
+  #compactBarRow4, #compactBarRow5, #compactBarRow6, #compactBarRow7{
     display:flex;align-items:center;gap:clamp(6px,2vw,10px);
     padding-top:clamp(3px,1vw,6px);
   }
   .compact-btn-wide{
     width:auto;flex:1;gap:6px;font-size:clamp(12px,3vw,14px);font-weight:600;padding:0 10px;
   }
+  /* "锁定水平适配屏幕...默认打开" — a labeled toggle button, same row
+     layout as #compactBarRow3's own label+control pairing (label flex:1,
+     control fixed-width) so it reads consistently with the 防碰撞强度 row
+     just above it despite being a button instead of a slider. */
+  #cbLockHFitLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex:1;}
+  #cbLockHFitToggle{width:auto;flex-shrink:0;padding:0 14px;}
 
 
   /* compact-mode tree view: near-fullscreen sheet (not the 60vh "more"
@@ -1239,6 +1245,10 @@
       <div id="compactBarRow6">
         <button class="compact-btn" id="cbMoreFit" title="回到全局">⛩</button>
       </div>
+      <div id="compactBarRow7">
+        <span id="cbLockHFitLabel">锁定水平适配屏幕</span>
+        <button class="compact-btn" id="cbLockHFitToggle" title="开启后子节点群永远水平对齐屏幕（左右不溢出，上下可滚动）；关闭后恢复按外接矩形比例自动选择对齐方向">开</button>
+      </div>
     </div>
   </div>
 
@@ -1484,7 +1494,21 @@ var appParams = {
   // display modes, switched via #uiModeSwitch's 3-way button group. Only
   // ONE of html.mobile-mode / html.mobile-compact-mode is ever applied at
   // a time (see applyUiMode) — desktop is simply neither class present.
-  uiMode: 'desktop'
+  uiMode: 'desktop',
+  // "锁定水平适配屏幕...默认打开" — 手机精致模式 ONLY (see
+  // recomputeCompactChildrenView). When true, the children-group's scale
+  // ALWAYS fits its width to the viewport and lets height overflow (pan
+  // vertically only) — never the other way around, regardless of the
+  // group's own aspect ratio. This fixes the "2个节点水平排布...纵向放大
+  // 到和屏幕高度一致...看上去左右溢出了" complaint: a wide-but-short group
+  // (2 side-by-side nodes on a tall phone screen) has groupAspect >
+  // viewportAspect, which the OLD always-fit-the-short-axis rule read as
+  // "fit height, overflow width" — mathematically correct (that axis IS
+  // the numerically shorter one relative to the viewport) but visually
+  // wrong on a phone, since a human expects a mother's own text boxes to
+  // never run off the left/right edges of a vertically-held phone. When
+  // false, falls back to the original dynamic short-axis-fit rule.
+  compactLockHorizontalFit: true
 };
 function loadParams(){
   try{
@@ -1495,6 +1519,7 @@ function loadParams(){
     if(typeof p.relaxStrength==='number') appParams.relaxStrength = clamp(p.relaxStrength, RELAX_MIN, RELAX_MAX);
     if(typeof p.globalFontScale==='number') appParams.globalFontScale = clamp(p.globalFontScale, GLOBAL_FONT_SCALE_MIN, GLOBAL_FONT_SCALE_MAX);
     if(typeof p.expandCap==='number') appParams.expandCap = clamp(p.expandCap, EXPAND_CAP_MIN, EXPAND_CAP_MAX);
+    if(typeof p.compactLockHorizontalFit==='boolean') appParams.compactLockHorizontalFit = p.compactLockHorizontalFit;
     // 'mobileMode' boolean is the OLD (pre-3-way-switch) storage format —
     // migrate it forward into the new uiMode enum so a returning user's
     // prior on/off choice survives as "mobile-raw" (the mode the old
@@ -1519,8 +1544,8 @@ var COLOR_PRESETS = [
   { name:'slate',  fillL:'#eef0f3', borderL:'#5a6b8c', fillD:'#282c34', borderD:'#9aabc9' }
 ];
 var BORDER_STYLES = ['solid','dashed','wave-thin','wave-thick'];
-var BORDER_LINES_MIN = 1, BORDER_LINES_MAX = 5, BORDER_LINES_DEFAULT = 1;
-var MASTER_LEVEL_MIN = 1, MASTER_LEVEL_MAX = 5, MASTER_LEVEL_DEFAULT = 3;
+var BORDER_LINES_MIN = 1, BORDER_LINES_MAX = 5, BORDER_LINES_DEFAULT = 2;
+var MASTER_LEVEL_MIN = 1, MASTER_LEVEL_MAX = 5, MASTER_LEVEL_DEFAULT = 2;
 
 var BASE_FONT = 30;        // baseline font size at sizeLevel=5 (default) — ~2x the old 14.5px
 var BASE_DIAM = 190;       // baseline circular diameter at sizeLevel=5 — ~2x the old 92px
@@ -3426,7 +3451,25 @@ function recomputeCompactChildrenView(parentId, viewportW, viewportH){
   // horizontal drag. "很瘦很高" -> fit WIDTH, allow vertical drag. Exactly
   // matching aspect ratios (viewportAspect===groupAspect) falls into the
   // width-fit branch, which is equivalent (nothing to scroll either way).
-  var fitHeight = groupAspect > viewportAspect;
+  //
+  // "锁定水平适配屏幕...默认打开...文本框永远需要和手机水平对齐,水平方向
+  // 不允许溢出,竖直方向可以溢出且支持上下滚动" — appParams.compactLockHorizontalFit
+  // (true by default) skips the dynamic groupAspect-vs-viewportAspect
+  // comparison below entirely and just hardcodes fitHeight=false: the
+  // width axis ALWAYS gets fit-to-viewport and height ALWAYS is the one
+  // left to overflow/scroll, regardless of how the children-group's own
+  // bbox happens to be shaped. This is exactly what "2个节点水平排布,手机
+  // 屏幕是竖直的...纵向放大到和屏幕高度一致,加上上下两个窄边框...但看上去
+  // 左右溢出了" was describing: a wide-but-short bbox has groupAspect >
+  // viewportAspect, which the dynamic rule below reads as "fit height" —
+  // numerically correct (height IS the axis needing less magnification to
+  // reach the viewport edge) but visually wrong on a phone, since a human
+  // expects the mother's own children to never spill past the LEFT/RIGHT
+  // screen edge specifically, never mind which axis the raw ratio favors.
+  // Turning the lock off restores the exact original dynamic rule
+  // unchanged — "退回到现在的逻辑,水平和竖直具体对齐哪边,取决于文本框
+  // 外接矩形和手机屏幕的比例".
+  var fitHeight = appParams.compactLockHorizontalFit ? false : (groupAspect > viewportAspect);
   // scale must come from ONLY the fit axis's own ratio — NOT
   // Math.min(availW/bbox.w, availH/bbox.h). fitHeight's own definition
   // above ALGEBRAICALLY guarantees availW/bbox.w < availH/bbox.h whenever
@@ -7630,6 +7673,18 @@ document.getElementById('cbMoreTheme').addEventListener('click', function(){ btn
 document.getElementById('cbMoreImport').addEventListener('click', function(){ document.getElementById('btnImport').click(); });
 document.getElementById('cbMoreExport').addEventListener('click', function(){ document.getElementById('btnExport').click(); });
 document.getElementById('cbMoreFit').addEventListener('click', function(){ document.getElementById('btnFit').click(); });
+var cbLockHFitToggleEl = document.getElementById('cbLockHFitToggle');
+function refreshCbLockHFitToggleUI(){
+  cbLockHFitToggleEl.textContent = appParams.compactLockHorizontalFit ? '开' : '关';
+  cbLockHFitToggleEl.classList.toggle('active', appParams.compactLockHorizontalFit);
+}
+cbLockHFitToggleEl.addEventListener('click', function(){
+  appParams.compactLockHorizontalFit = !appParams.compactLockHorizontalFit;
+  refreshCbLockHFitToggleUI();
+  saveParams();
+  render();
+});
+refreshCbLockHFitToggleUI();
 document.getElementById('cbCenterVisibleChildren').addEventListener('click', function(){
   compactShowAllMode = !compactShowAllMode;
   refreshCompactShowAllUI();
