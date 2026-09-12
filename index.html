@@ -887,6 +887,26 @@
     gap:clamp(3px,1vw,6px);
   }
   .compact-searchtree-cluster .compact-btn{width:100%;height:100%;}
+  /* "🟧在上,🎯在下...⭕️在上,🌈在下...➕在上,另一个绿色新建按钮在下" — three
+     stacked-pair clusters, same 2-row grid shape as
+     .compact-searchtree-cluster's own search/tree stack, reused here for
+     row1's newly-consolidated action buttons instead of leaving them all
+     as separate full-height buttons. Each cluster gets HALF a button-
+     width of its own extra breathing room on top of row1's normal
+     gap — "再往右边间隔半个按钮宽度左右" — via margin-left rather than a
+     bigger row-wide gap, since only the space AROUND these three
+     clusters needs widening, not every button in row1. */
+  .compact-stack-cluster{
+    display:grid;flex-shrink:0;margin-left:clamp(17px,5vw,23px);
+    grid-template-rows:clamp(34px,10vw,46px) clamp(34px,10vw,46px);
+    gap:clamp(3px,1vw,6px);
+  }
+  .compact-stack-cluster .compact-btn{width:100%;height:100%;}
+  /* ✳️'s own "另一个绿色新建按钮" — visually distinct from ➕ (both create a
+     node, but ✳️ specifically targets the 未归纳 inbox) via the same green
+     already used elsewhere for a "constructive/additive" action (see
+     .ctv-move-btn.ctv-move-child/-sibling, #mm-cat-badge B). */
+  .compact-btn-green{background:#2ea88a;color:#fff;border-color:#2ea88a;}
   /* ⬅️/⬆️/⬇️/➡️ nav cluster: a self-contained 2x3 grid (⬅️ spanning both
      rows on the far left, ⬆️ top-middle, ⬇️ bottom-middle, ➡️ spanning
      both rows on the right) — ⬅️ mirrors ➡️'s own full-height span so
@@ -943,13 +963,13 @@
   }
   #compactDepthCtl > div + div{border-left:1px solid var(--panel-border);}
   #compactDepthCtl > div.pressed{background:rgba(120,130,160,.18);}
-  /* row2: depth control + drag-toggle + random-button strip + 🎯(临时全揽
-     显示切换, own compactShowAllMode — NOT forwarded to desktop's
-     btnCenterVisibleChildren anymore, see cbCenterVisibleChildren's own
-     click handler) + ⭕️(局部重排, reusing
-     btnResetVisibleSizes) at the end — random-button strip is flex:1 so
-     however many custom buttons exist, the fixed-width controls on
-     either side never get squeezed off-screen. */
+  /* row2: depth control + drag-toggle + random-button strip (now the
+     ONLY row1 leftover control-cluster row — 🎯/⭕️/🌈 moved up into
+     row1's own stacked-pair clusters, see .compact-stack-cluster) —
+     random-button strip is flex:1 so however many custom buttons exist,
+     the fixed-width controls on the left never get squeezed off-screen,
+     and now has the entire rest of row2 to itself — "第二排最右边剩余
+     空间全部留给随机选一自定义按钮". */
   #compactBarRow2{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactBarRow3{display:flex;align-items:center;gap:clamp(6px,2vw,10px);}
   #compactRelaxLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
@@ -1193,9 +1213,18 @@
         <button class="compact-btn" id="cbNavDown" title="下跳回到刚离开的节点">⬇️</button>
         <button class="compact-btn" id="cbNavSibling" title="循环跳转到下一个兄弟节点">➡️</button>
       </div>
-      <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
-      <button class="compact-btn" id="cbAddToInbox" title="新建节点到未归纳节点">✳️</button>
-      <button class="compact-btn" id="cbMakeRoot" title="以最近选中的节点为根节点视图（等价双击）">🟧</button>
+      <div class="compact-stack-cluster">
+        <button class="compact-btn" id="cbMakeRoot" title="以最近选中的节点为根节点视图（等价双击）">🟧</button>
+        <button class="compact-btn" id="cbCenterVisibleChildren" title="临时全揽显示：强制缩放到所有一级子节点同时可见（再按一次或跳转到其他根节点即取消）">🎯</button>
+      </div>
+      <div class="compact-stack-cluster">
+        <button class="compact-btn" id="cbResetVisibleSizes" title="重置当前可见区域一级子节点的位置、大小和相对排版">⭕️</button>
+        <button class="compact-btn" id="cbRandomizeVisibleStyle" title="随机打乱当前可见区域一级子节点的颜色和边框">🌈</button>
+      </div>
+      <div class="compact-stack-cluster">
+        <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
+        <button class="compact-btn compact-btn-green" id="cbAddToInbox" title="新建节点到未归纳节点">✳️</button>
+      </div>
     </div>
     <div id="compactBarRow2">
       <div id="compactDepthCtl" title="默认最大可视深度">
@@ -1205,9 +1234,6 @@
       </div>
       <button class="compact-btn" id="cbDragToggle" title="拖拽平移：开启后可拖动一级子节点">✋</button>
       <div id="compactRandomZone"></div>
-      <button class="compact-btn" id="cbCenterVisibleChildren" title="临时全揽显示：强制缩放到所有一级子节点同时可见（再按一次或跳转到其他根节点即取消）">🎯</button>
-      <button class="compact-btn" id="cbResetVisibleSizes" title="重置当前可见区域一级子节点的位置、大小和相对排版">⭕️</button>
-      <button class="compact-btn" id="cbRandomizeVisibleStyle" title="随机打乱当前可见区域一级子节点的颜色和边框">🌈</button>
     </div>
     <div id="compactBarRow3">
       <span id="compactRelaxLabel">防碰撞强度</span>
