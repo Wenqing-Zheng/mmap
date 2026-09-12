@@ -872,6 +872,10 @@
      state repurposes the arrows for a completely different action
      (scrolling the view) rather than another move-speed. */
   .compact-btn.cbdrag-scroll{background:#d1495b;color:#fff;border-color:#d1495b;}
+  /* 🎯's own toggle state — same red as cbdrag-scroll (both mean "an
+     override is currently forcing a non-default view"), armed by
+     compactShowAllMode's own click handler, see refreshCompactShowAllUI. */
+  .compact-btn.cb-showall-active{background:#d1495b;color:#fff;border-color:#d1495b;}
   /* search+tree cluster: "tree view按钮放在搜索按钮正下方" — same
      stacked-pair pattern as .compact-nav-cluster's own up/down pairing,
      just a single column instead of nav-cluster's extra spanning-column
@@ -939,8 +943,10 @@
   }
   #compactDepthCtl > div + div{border-left:1px solid var(--panel-border);}
   #compactDepthCtl > div.pressed{background:rgba(120,130,160,.18);}
-  /* row2: depth control + drag-toggle + random-button strip + 🎯(仅居中,
-     reusing btnCenterVisibleChildren) + ⭕️(局部重排, reusing
+  /* row2: depth control + drag-toggle + random-button strip + 🎯(临时全揽
+     显示切换, own compactShowAllMode — NOT forwarded to desktop's
+     btnCenterVisibleChildren anymore, see cbCenterVisibleChildren's own
+     click handler) + ⭕️(局部重排, reusing
      btnResetVisibleSizes) at the end — random-button strip is flex:1 so
      however many custom buttons exist, the fixed-width controls on
      either side never get squeezed off-screen. */
@@ -1193,7 +1199,7 @@
       </div>
       <button class="compact-btn" id="cbDragToggle" title="拖拽平移：开启后可拖动一级子节点">✋</button>
       <div id="compactRandomZone"></div>
-      <button class="compact-btn" id="cbCenterVisibleChildren" title="把当前可见区域根节点的一级孩子整体平移到居中位置">🎯</button>
+      <button class="compact-btn" id="cbCenterVisibleChildren" title="临时全揽显示：强制缩放到所有一级子节点同时可见（再按一次或跳转到其他根节点即取消）">🎯</button>
       <button class="compact-btn" id="cbResetVisibleSizes" title="重置当前可见区域一级子节点的位置、大小和相对排版">⭕️</button>
       <button class="compact-btn" id="cbRandomizeVisibleStyle" title="随机打乱当前可见区域一级子节点的颜色和边框">🌈</button>
     </div>
@@ -2378,6 +2384,7 @@ function boxRadius(w, h){ return Math.max(w, h)/2; }
 var draggingNodeId = null;
 var freshlyPlacedThisPass = []; // reset at the top of each render() attempt; see render()'s retry loop
 var RECT_AVAIL_MARGIN = 60; // matches the circle case's fixed inset (see buildContainerTree's old innerAvail calc)
+var CENTERED_FIT_SLACK = 26; // extra real breathing room a centeredFit container keeps AFTER availForContainer's own -RECT_AVAIL_MARGIN cancels the margin added above — see containerSize's own comment on why this must be a SEPARATE constant from RECT_AVAIL_MARGIN, not a bigger RECT_AVAIL_MARGIN itself (which every OTHER, non-centeredFit node also reads and must stay unchanged for)
 /* describes the usable interior region for placing a container's direct
    children — either a circle (shape:'circle', radius r) or an axis-aligned
    rect (shape:'rect', halfW/halfH) centered on the container. Every
@@ -2789,8 +2796,26 @@ function containerSize(n, forceShow, isFullscreenRoot){
   // the real children never asked for — exactly the "四个方向留白不均"
   // complaint. Every other node (centeredFit still false, the default)
   // takes the untouched original path — "别的节点...效果必须不能变".
-  var halfW = n.centeredFit ? (actualHalfW + RECT_AVAIL_MARGIN) : (Math.max(idealR, actualHalfW) + RECT_AVAIL_MARGIN);
-  var halfH = n.centeredFit ? (actualHalfH + RECT_AVAIL_MARGIN) : (Math.max(idealR, actualHalfH) + RECT_AVAIL_MARGIN);
+  //
+  // "⭕️...裁剪过于激进...应该...保证预留一个窄边框" — a centeredFit node's
+  // own availForContainer(box) later subtracts this SAME RECT_AVAIL_MARGIN
+  // straight back off of halfW/H (see that function), which — for the
+  // centeredFit branch specifically — lands EXACTLY back on actualHalfW/H
+  // with ZERO real slack: the margin added here and the margin subtracted
+  // there are the identical constant, so they cancel out to nothing. Every
+  // OTHER real on-screen protrusion this file never folds into
+  // actualHalfW/H's own box.w/h measurement — the chip label sitting at
+  // top:-14px above a container's own frame, a selected node's 2.5px
+  // outline at 1px offset, the border-svg's outer concentric stroke(s)
+  // (BORDER_LINE_GAP px further out per extra line), the glow's 6px
+  // box-shadow — then has NOTHING left to be absorbed by, so the very
+  // next containment check (flagIfOutOfBounds) or compact-mode viewport
+  // fit sees zero headroom and starts clipping those edges. Adding
+  // CENTERED_FIT_SLACK on top (so it survives availForContainer's
+  // subtraction as real, positive room) is what actually delivers "预留
+  // 一个窄边框" instead of a margin that was only ever nominal.
+  var halfW = n.centeredFit ? (actualHalfW + RECT_AVAIL_MARGIN + CENTERED_FIT_SLACK) : (Math.max(idealR, actualHalfW) + RECT_AVAIL_MARGIN);
+  var halfH = n.centeredFit ? (actualHalfH + RECT_AVAIL_MARGIN + CENTERED_FIT_SLACK) : (Math.max(idealR, actualHalfH) + RECT_AVAIL_MARGIN);
   naturalW = Math.max(own.w, halfW*2);
   naturalH = Math.max(own.h, halfH*2);
   shape = 'rect';
@@ -3261,7 +3286,14 @@ function renderImpl(){
     // sit outside the new bbox's own valid range, clipping an edge until
     // the next drag/recompute corrected it) — "跳转以后...文本框全都要在
     // 屏幕以内".
-    if(focusChanged){ compactChildrenView.offsetX = 0; compactChildrenView.offsetY = 0; }
+    if(focusChanged){
+      compactChildrenView.offsetX = 0; compactChildrenView.offsetY = 0;
+      // "🎯红色期间,任何跳转到其他跟节点的行为都会立即取消🎯激活" — a new
+      // focus root has a completely different children bbox that this
+      // override was never armed for; carrying it over would silently
+      // keep force-fitting an unrelated group.
+      if(compactShowAllMode){ compactShowAllMode = false; refreshCompactShowAllUI(); }
+    }
     camera.scale = 1;
     var cvis = visibleCanvasRect(), cfull = canvasWrap.getBoundingClientRect();
     camera.x = (cvis.left - cfull.left) + cvis.width/2;
@@ -3296,6 +3328,22 @@ var lastFocusId = null;
    render()) whenever the focus root changes, since "居中"/"缩放" is only
    ever computed fresh against whichever root is currently showing. */
 var compactChildrenView = {scale:1, offsetX:0, offsetY:0, axis:null, groupW:0, groupH:0};
+/* "🎯...重新定义🎯的功能为:临时性的,全揽所有一级节点" — a compact-mode-only
+   TOGGLE (not a one-shot action like the old "中心化" it used to forward
+   to): while true, recomputeCompactChildrenView switches from its normal
+   "fit the SHORT axis exactly, let the long axis overflow-and-scroll" rule
+   to the OPPOSITE — fit BOTH axes inside the viewport (shrink to whichever
+   axis needs it more) so every direct child is visible at once, with
+   nothing left to scroll. Reset to false the moment the focus root itself
+   changes (see renderImpl's own focusChanged branch) — "🎯红色期间,任何
+   跳转到其他跟节点的行为都会立即取消🎯激活" — since a brand-new root's
+   children-group is a completely different bbox that this override was
+   never actually armed for. */
+var compactShowAllMode = false;
+function refreshCompactShowAllUI(){
+  var el = document.getElementById('cbCenterVisibleChildren');
+  if(el) el.classList.toggle('cb-showall-active', compactShowAllMode);
+}
 /* the smallest axis-aligned box enclosing every DIRECT, PLACED child of
    parentId, in the parent's own local px/py coordinate space — the same
    space layoutChildrenPositions already lays every child out in. Returns
@@ -3354,6 +3402,25 @@ function recomputeCompactChildrenView(parentId, viewportW, viewportH){
   }
   var availW = Math.max(1, viewportW - COMPACT_GROUP_EDGE_GAP*2);
   var availH = Math.max(1, viewportH - COMPACT_GROUP_EDGE_GAP*2);
+  // "🎯...画面强制缩放到所有节点都可见,也就是和现在正常模式的缩放要求相反,
+  // 所有节点的外接矩形的相对屏幕较短的一边和屏幕对齐,并且预留一个窄边框" —
+  // the exact opposite of the normal fitHeight/fitWidth branch below (which
+  // deliberately fits only ONE axis and lets the other overflow-and-scroll):
+  // here BOTH axes must land inside the viewport with nothing left over to
+  // scroll, so scale is the MIN of both axes' own ratios (whichever axis is
+  // proportionally the tighter fit wins), not just the short-axis's ratio.
+  // axis is left null — with nothing overflowing on EITHER axis, there is
+  // nothing for compactScrollView/a drag to ever pan, matching "默认的缩放
+  // 逻辑被禁用" while this mode is armed.
+  if(compactShowAllMode){
+    var showAllScale = Math.min(availW/bbox.w, availH/bbox.h, 1);
+    compactChildrenView.scale = showAllScale;
+    compactChildrenView.axis = null;
+    compactChildrenView.groupW = bbox.w*showAllScale;
+    compactChildrenView.groupH = bbox.h*showAllScale;
+    compactChildrenView.offsetX = 0; compactChildrenView.offsetY = 0;
+    return;
+  }
   var groupAspect = bbox.w/bbox.h, viewportAspect = availW/availH;
   // "很宽很矮" (group wider-than-viewport-proportion) -> fit HEIGHT, allow
   // horizontal drag. "很瘦很高" -> fit WIDTH, allow vertical drag. Exactly
@@ -7563,7 +7630,11 @@ document.getElementById('cbMoreTheme').addEventListener('click', function(){ btn
 document.getElementById('cbMoreImport').addEventListener('click', function(){ document.getElementById('btnImport').click(); });
 document.getElementById('cbMoreExport').addEventListener('click', function(){ document.getElementById('btnExport').click(); });
 document.getElementById('cbMoreFit').addEventListener('click', function(){ document.getElementById('btnFit').click(); });
-document.getElementById('cbCenterVisibleChildren').addEventListener('click', function(){ document.getElementById('btnCenterVisibleChildren').click(); });
+document.getElementById('cbCenterVisibleChildren').addEventListener('click', function(){
+  compactShowAllMode = !compactShowAllMode;
+  refreshCompactShowAllUI();
+  render();
+});
 document.getElementById('cbResetVisibleSizes').addEventListener('click', function(){ document.getElementById('btnResetVisibleSizes').click(); });
 document.getElementById('cbRandomizeVisibleStyle').addEventListener('click', randomizeVisibleChildrenStyle);
 document.getElementById('cbMoreDesktop').addEventListener('click', function(){
