@@ -365,6 +365,11 @@
   /* ---------- canvas ---------- */
   #canvasWrap{position:relative;flex:1;overflow:hidden;background:var(--canvas-bg);cursor:grab;}
   #canvasWrap.panning{cursor:grabbing;}
+  /* "拖拽json进来直接import" — a dashed inset highlight while a file is
+     being dragged over the canvas, same visual language as
+     #railPinnedZone.drag-over, so it reads as "drop here" rather than
+     looking like a rendering glitch. */
+  #canvasWrap.drag-over-json{box-shadow:inset 0 0 0 3px var(--accent);}
   #stage{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform;}
 
   /* size-gauge ("thermometer"): shown briefly to the right of every visible
@@ -1319,6 +1324,10 @@
           <button class="mini-btn" id="btnCenterVisibleChildren" title="把当前可见区域根节点的一级孩子整体平移到居中位置，母节点边框收紧到刚好包裹所有孩子并留一圈均匀间隙（不改变孩子之间的相对位置和相对大小，不影响二级及更深层节点）">🎯</button>
           <div class="reset-btn-caption">仅居中<br>不改大小</div>
         </div>
+        <div class="reset-btn-col">
+          <button class="mini-btn" id="btnOnlyEmptyB" title="开启后，所有随机选一按钮只在没有孩子且没有detail的B节点中选择；关闭时只在有孩子或有detail的B节点中选择">🫥</button>
+          <div class="reset-btn-caption">仅空B</div>
+        </div>
       </div>
     </div>
     <div class="param-block">
@@ -1529,7 +1538,15 @@ var appParams = {
   // wrong on a phone, since a human expects a mother's own text boxes to
   // never run off the left/right edges of a vertically-held phone. When
   // false, falls back to the original dynamic short-axis-fit rule.
-  compactLockHorizontalFit: true
+  compactLockHorizontalFit: true,
+  // "🫥...仅空B...按下以后变成实心,只在没有孩子的...B节点选择,否则默认是
+  // 没有填充颜色,关闭状态时只在有孩子的B节点选择...影响范围是所有随机选一
+  // 按钮" — a single global toggle, shared by desktop's own 布局参数 "仅空B"
+  // button and 手机精致模式's 🖐️/🫥 6th cycle state (see COMPACT_DRAG_SPEEDS'
+  // own comment), read by randomButtonScopeBNodes so EVERY random-pick
+  // button (materialized or global, on either surface) partitions its
+  // B-node pool the same way.
+  onlyEmptyBNodes: false
 };
 function loadParams(){
   try{
@@ -1541,6 +1558,7 @@ function loadParams(){
     if(typeof p.globalFontScale==='number') appParams.globalFontScale = clamp(p.globalFontScale, GLOBAL_FONT_SCALE_MIN, GLOBAL_FONT_SCALE_MAX);
     if(typeof p.expandCap==='number') appParams.expandCap = clamp(p.expandCap, EXPAND_CAP_MIN, EXPAND_CAP_MAX);
     if(typeof p.compactLockHorizontalFit==='boolean') appParams.compactLockHorizontalFit = p.compactLockHorizontalFit;
+    if(typeof p.onlyEmptyBNodes==='boolean') appParams.onlyEmptyBNodes = p.onlyEmptyBNodes;
     // 'mobileMode' boolean is the OLD (pre-3-way-switch) storage format —
     // migrate it forward into the new uiMode enum so a returning user's
     // prior on/off choice survives as "mobile-raw" (the mode the old
@@ -1887,7 +1905,22 @@ function randomButtonScopeBNodes(btn){
       if(seen[cid]) return;
       seen[cid] = true;
       var n = node(cid);
-      if(n && n.category==='B') out.push(n);
+      if(!n || n.category!=='B') return;
+      // "🫥...仅空B...按下以后...只在没有孩子的...B类型节点选择...否则默认
+      // 没有填充颜色,关闭状态时只在有孩子的B节点选择" — appParams.onlyEmptyBNodes
+      // is a single global flag (persisted, affects EVERY random-pick
+      // button, materialized or global) that partitions the B-node pool
+      // by "has at least one child OR has a non-empty detail" vs "neither" —
+      // the two halves are mutually exclusive and never overlap, so
+      // toggling this can never silently widen a button's scope, only
+      // switch which half it draws from. "有孩子的B类节点...需要额外包含
+      // 有detail的B" — a leaf B node the user has actually written a
+      // detail into is "filled in" in the same sense a drilled B with
+      // children is, so it belongs on the same side of the partition;
+      // 🫥's "仅空B" half is then genuinely BOTH childless AND detail-less.
+      var isFilled = children(n.id).length>0 || richToPlain(n.detail||'').length>0;
+      if(appParams.onlyEmptyBNodes ? isFilled : !isFilled) return;
+      out.push(n);
     });
   });
   return out;
@@ -1975,7 +2008,10 @@ function expandSubtreeCapped(id, cap){
 }
 /* pressing a random-pick button: choose a B node from its scope, make it
    the focus root (so it fills the screen the same way Shift+Enter does),
-   and fully expand its C-node subtree. */
+   and fully expand its C-node subtree. Shared by the desktop panel list,
+   desktop pinned-rail shortcuts, AND 手机精致模式's own random-zone
+   buttons (see this function's three call sites) — editing it here
+   applies to both surfaces at once. */
 function activateRandomButton(btn){
   var pick = pickRandomBNode(btn);
   if(!pick) return;
@@ -1984,6 +2020,20 @@ function activateRandomButton(btn){
   state.focusId = pick.id;
   selectedId = null;
   expandEntireSubtree(pick.id);
+  // "每次出来的时候,默认状态修改成:如果有detail,则需要状态是仅显示
+  // summary。如果有孩子,则节点自己也是仅显示summary,但所有孩子显示为
+  // summary也不可见" — a fresh, deliberate reset applied every activation
+  // (not just the first), independent of whatever vis these nodes
+  // happened to carry in from a previous view. Only the picked node's
+  // DIRECT children are hidden — expandEntireSubtree above already
+  // drilled the whole subtree open structurally, this only controls
+  // what's visually shown at the moment the random pick lands.
+  var hasDetail = richToPlain(pick.detail||'').length>0;
+  var hasKids = children(pick.id).length>0;
+  if(hasDetail || hasKids) pick.vis = 1;
+  if(hasKids){
+    children(pick.id).forEach(function(k){ k.vis = 0; });
+  }
   scheduleSave();
   render();
 }
@@ -4222,6 +4272,7 @@ function nodeMousedown(ev, el, n){
       selectedId = n.id;
       scheduleSave();
       render();
+      resyncRootView(); // same overflow fix as the single-node ⌘+click branch above — the root's own box can be among the batch-cycled subtree
     }
     return;
   }
@@ -4241,6 +4292,24 @@ function nodeMousedown(ev, el, n){
     selectedId = n.id;
     scheduleSave();
     render();
+    // "如果只有一个节点显示为仅summary可见时,⌘单击展开detail,会导致溢出"
+    // — toggling n's OWN vis changes n's own containerSize() box (detail
+    // text adds height/width, see computeNodeBox's showDetail branch), and
+    // when n IS the current focus root that's exactly the box
+    // fitCameraToRoot sizes the whole view against. render() only
+    // auto-refits on an actual FOCUS change (see its own focusChanged
+    // check) — toggling vis on the already-focused root doesn't change
+    // state.focusId at all, so the camera silently kept whatever scale it
+    // had before detail appeared, letting the now-taller/wider box spill
+    // past the viewport edge. Same fix pattern as buildExpandStar's own
+    // "折叠的节点被手动按*展开时,此时也要加一个自动化重置一下根节点显示
+    // 区域动作" — only relevant when n is actually the root (a non-root
+    // node's vis change never touches the root's own box, so
+    // resyncRootView would be a no-op silently doing nothing there rather
+    // than an incorrect ROOT recenter — but calling it unconditionally
+    // here is still safe either way since fitCameraToRoot always measures
+    // the CURRENT focus root fresh, never n itself).
+    resyncRootView();
     return;
   }
   if(n.id!==state.focusId && el){
@@ -5784,14 +5853,14 @@ function renderTreeView(){
     // same category-edit-mode toggle as the canvas (Shift+click either
     // view enters/exits it together, since it's the same catEditMode
     // flag) — while active, every tree row ALSO shows its category letter,
-    // color-coded (A蓝色/B红色/C黄色), and for B nodes "I{importance}
-    // M{masterLevel}" — "tree view每个node同时左侧也显示ABC类型...A用蓝色,
-    // B用红色,C用黄色".
+    // color-coded (A蓝色/B红色/C黄色), and for A/B nodes "(importance,
+    // masterLevel)" — "tree view每个node同时左侧也显示ABC类型...A用蓝色,
+    // B用红色,C用黄色...A类也要能在电脑版看见...C类不需要看见,保持不变".
     if(catEditMode){
       var catTag = document.createElement('span');
       catTag.className = 'tv-cat-tag';
       catTag.dataset.cat = n.category;
-      catTag.textContent = n.category + (n.category==='B' ? ('('+importanceOf(n)+','+n.masterLevel+')') : '');
+      catTag.textContent = n.category + (n.category!=='C' ? ('('+importanceOf(n)+','+n.masterLevel+')') : '');
       row.appendChild(catTag);
     }
     var summarySpan = document.createElement('span');
@@ -6596,12 +6665,21 @@ var paramsFlyout = document.getElementById('paramsFlyout');
 var relaxSlider = document.getElementById('relaxSlider');
 var fontScaleValueEl = document.getElementById('fontScaleValue');
 var expandCapValueEl = document.getElementById('expandCapValue');
+var btnOnlyEmptyB = document.getElementById('btnOnlyEmptyB');
 registerRailPanel(btnParams, paramsFlyout, function(){ refreshParamsUI(); });
 function refreshParamsUI(){
   relaxSlider.value = Math.round(appParams.relaxStrength*100);
   fontScaleValueEl.textContent = appParams.globalFontScale.toFixed(1)+'×';
   expandCapValueEl.textContent = appParams.expandCap;
+  btnOnlyEmptyB.classList.toggle('active', appParams.onlyEmptyBNodes);
 }
+btnOnlyEmptyB.addEventListener('click', function(){
+  appParams.onlyEmptyBNodes = !appParams.onlyEmptyBNodes;
+  refreshParamsUI();
+  if(typeof refreshCbDragToggleUI==='function') refreshCbDragToggleUI();
+  saveParams();
+  render();
+});
 relaxSlider.addEventListener('input', function(){
   appParams.relaxStrength = clamp(relaxSlider.value/100, RELAX_MIN, RELAX_MAX);
   saveParams();
@@ -7233,9 +7311,10 @@ function validateImportSchema(s){
   if(typeof s.randomFormula!=='string') return 'missing randomFormula';
   return null;
 }
-fileInput.addEventListener('change', function(){
-  var f = fileInput.files[0];
-  if(!f) return;
+/* shared by fileInput's own change handler AND the new drag-and-drop-onto-
+   canvas entry point (desktop only, see canvasWrap's dragover/drop
+   listeners below) — both ultimately just hand a File object here. */
+function importJsonFile(f){
   var reader = new FileReader();
   reader.onload = function(){
     var s;
@@ -7243,13 +7322,11 @@ fileInput.addEventListener('change', function(){
       s = JSON.parse(reader.result);
     }catch(err){
       alert('导入失败：JSON 格式不正确');
-      fileInput.value='';
       return;
     }
     var validationError = validateImportSchema(s);
     if(validationError){
       alert('导入失败：文件格式与当前版本不兼容（'+validationError+'）。请使用当前版本重新导出的文件。');
-      fileInput.value='';
       return;
     }
     sanitizeStateNodes(s);
@@ -7261,9 +7338,39 @@ fileInput.addEventListener('change', function(){
     applyTheme();
     scheduleSave();
     render();
-    fileInput.value='';
   };
   reader.readAsText(f);
+}
+fileInput.addEventListener('change', function(){
+  var f = fileInput.files[0];
+  if(!f) return;
+  importJsonFile(f);
+  fileInput.value='';
+});
+/* "电脑版改成支持拖拽json进来直接import" — drag a .json file straight onto
+   the canvas (desktop/手机原始模式 only; 手机精致模式 has no OS-level file-
+   drag gesture to speak of) instead of requiring the 🚢 button + file
+   picker. dragover must call preventDefault() on EVERY event (not just
+   dragenter) — browsers default to "navigate to this file" on drop
+   otherwise, which is what preventDefault suppresses; without it on
+   dragover specifically, the drop handler never even fires. */
+canvasWrap.addEventListener('dragover', function(ev){
+  ev.preventDefault();
+  canvasWrap.classList.add('drag-over-json');
+});
+canvasWrap.addEventListener('dragleave', function(){
+  canvasWrap.classList.remove('drag-over-json');
+});
+canvasWrap.addEventListener('drop', function(ev){
+  ev.preventDefault();
+  canvasWrap.classList.remove('drag-over-json');
+  var f = ev.dataTransfer.files[0];
+  if(!f) return;
+  if(!/\.json$/i.test(f.name)){
+    alert('导入失败：请拖拽一个 .json 文件');
+    return;
+  }
+  importJsonFile(f);
 });
 
 document.addEventListener('mousedown', function(e){
@@ -7393,17 +7500,30 @@ var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge at 中速 (mult=
 // does NOT set compactDragConsumed — a 🖐️ tap right after a scroll still
 // just advances to 'off' normally, it never short-circuits early the way
 // the move-modes do.
-var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow', 'scroll'];
+var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow', 'scroll', 'onlyEmptyB'];
 var COMPACT_DRAG_MULT = {mid:1, fast:25, slow:1/5};
 var COMPACT_SCROLL_STEP = BASE_DIAM*0.6; // one deliberate "page" of scroll per tap, bigger than a single node-nudge step
 var compactDragMode = 'off';
 var compactDragConsumed = false;
 var cbDragToggleEl = document.getElementById('cbDragToggle');
+// "再在红色之后再加一个,按下以后,🖐️变成🫥,作用是改变随机选一的功能" — the
+// 6th cycle state is NOT another arrow-repurposing mode like fast/mid/
+// slow/scroll (⬆️⬇️⬅️➡️ are untouched while this is active) — entering it
+// is itself the action: flips the SAME global appParams.onlyEmptyBNodes
+// flag desktop's own 布局参数 "仅空B" button also controls (see
+// randomButtonScopeBNodes), and the button's own glyph swaps ✋→🫥 for as
+// long as this state is active so its state is visible without reading
+// the tooltip. Leaving this state (advancing to 'off' on the next tap)
+// does NOT revert onlyEmptyBNodes — it's a persisted global setting, not
+// a transient arm/disarm like the move-speeds are; unset it again the
+// same way (advance back to this state) to flip it back off.
 function refreshCbDragToggleUI(){
   cbDragToggleEl.classList.remove('active', 'cbdrag-mid', 'cbdrag-fast', 'cbdrag-slow', 'cbdrag-scroll');
-  if(compactDragMode!=='off') cbDragToggleEl.classList.add('cbdrag-'+compactDragMode);
-  cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：快速→中速→慢速→滚动）'
+  if(compactDragMode!=='off' && compactDragMode!=='onlyEmptyB') cbDragToggleEl.classList.add('cbdrag-'+compactDragMode);
+  cbDragToggleEl.textContent = compactDragMode==='onlyEmptyB' ? '🫥' : '✋';
+  cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：快速→中速→慢速→滚动→仅空B）'
     : compactDragMode==='scroll' ? '屏幕滚动中（红色）：⬆️⬇️⬅️➡️滚动可见子节点区域（横向排版时⬅️➡️才有效）；点击关闭'
+    : compactDragMode==='onlyEmptyB' ? ('随机选一范围：'+(appParams.onlyEmptyBNodes ? '仅无孩子且无detail的B节点' : '仅有孩子或有detail的B节点')+'（与电脑版"仅空B"共用同一开关）；点击关闭')
     : '拖拽平移中（'+({mid:'中速', fast:'快速', slow:'慢速'})[compactDragMode]+'）：点击切换下一速度，或移动一次节点后再点击关闭';
 }
 cbDragToggleEl.addEventListener('click', function(){
@@ -7416,6 +7536,15 @@ cbDragToggleEl.addEventListener('click', function(){
     compactDragMode = COMPACT_DRAG_SPEEDS[(idx+1) % COMPACT_DRAG_SPEEDS.length];
   }
   compactDragConsumed = false;
+  // entering 'onlyEmptyB' (never leaving it) is what actually flips the
+  // flag — "按下以后...作用是改变随机选一的功能" describes a single tap
+  // toggling it, not a held/armed state.
+  if(compactDragMode==='onlyEmptyB'){
+    appParams.onlyEmptyBNodes = !appParams.onlyEmptyBNodes;
+    saveParams();
+    if(typeof refreshParamsUI==='function') refreshParamsUI();
+    render();
+  }
   refreshCbDragToggleUI();
 });
 refreshCbDragToggleUI();
@@ -7725,9 +7854,10 @@ document.getElementById('cbMoreRaw').addEventListener('click', function(){
    renderTreeView) since the row content, tap targets, and A/B-only filter
    are all different enough from the desktop/手机原始 tree that forwarding
    would need more override code than a fresh ~40-line walk. Importance/
-   masterLevel show on EVERY row via "A(imp,lvl)"/"B(imp,lvl)" — "A类节点
-   也要显示重要度和熟练度" — not just B as the desktop tree does, since
-   desktop's own B-only format predates this request.
+   masterLevel show on EVERY A/B row via "A(imp,lvl)"/"B(imp,lvl)", same
+   as desktop's own renderTreeView now does (see its own catEditMode
+   comment) — this predates that change but the two have always agreed on
+   scope (A/B shown, C not), so nothing here needed to move in lockstep.
    ============================================================ */
 var compactTreeSheetEl = document.getElementById('compactTreeSheet');
 var compactTreeListEl = document.getElementById('compactTreeList');
