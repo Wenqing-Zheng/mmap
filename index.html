@@ -1029,12 +1029,16 @@
      transition comes back for the SNAP-to-open-or-closed settle once the
      finger lifts. */
   #compactBarExpand.dragging{transition:none;}
-  #compactBarRow4, #compactBarRow5, #compactBarRow6, #compactBarRow7{
+  /* row4 now holds all 6 secondary buttons in one row — 导入🚢/导出🚁/主题 +
+     电脑模式🖥/原始模式📱/回到全局⛩ — "把它们和全局根节点三个正方形按钮一起,
+     加到下方拖拽区域的第一排,这样第一排有3+2+1=6个按钮". flex-wrap lets
+     6 buttons wrap to a second visual line on very narrow phones without
+     needing a separate row8/row9 — same clamp()-based sizing as every
+     other .compact-btn keeps them square regardless of wrap. */
+  #compactBarRow4{flex-wrap:wrap;}
+  #compactBarRow4, #compactBarRow7{
     display:flex;align-items:center;gap:clamp(6px,2vw,10px);
     padding-top:clamp(3px,1vw,6px);
-  }
-  .compact-btn-wide{
-    width:auto;flex:1;gap:6px;font-size:clamp(12px,3vw,14px);font-weight:600;padding:0 10px;
   }
   /* "锁定水平适配屏幕...默认打开" — a labeled toggle button, same row
      layout as #compactBarRow3's own label+control pairing (label flex:1,
@@ -1042,6 +1046,29 @@
      just above it despite being a button instead of a slider. */
   #cbLockHFitLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex:1;}
   #cbLockHFitToggle{width:auto;flex-shrink:0;padding:0 14px;}
+  /* "拖拽区域下面再新建一个区域,用来存放电脑版随机选一的可编辑公式" —
+     row8 reuses the desktop #randomFormulaInput/#randomFormulaDot markup
+     verbatim (see compactFormulaInput's own JS wiring, which shares
+     refreshFormulaStatus/formulaIsValid/state.randomFormula 1:1 with
+     desktop — no separate compact-mode formula logic exists anywhere).
+     Only the CSS ids differ (compact- prefix) since #randomFlyout itself
+     stays desktop/手机原始模式-only (display:none under
+     html.mobile-compact-mode, unchanged) and can't be reused as a DOM
+     node here without also dragging its whole flyout positioning along. */
+  #compactBarRow8{padding-top:clamp(3px,1vw,6px);}
+  #compactFormulaWrap{position:relative;width:100%;}
+  #compactFormulaInput{
+    width:100%;border:1px solid var(--panel-border);border-radius:8px;background:var(--bg);color:var(--text-main);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:clamp(11px,2.8vw,13px);padding:8px;resize:vertical;outline:none;
+    box-sizing:border-box;
+  }
+  #compactFormulaInput:focus{border-color:var(--accent);}
+  #compactFormulaDot{
+    position:absolute;right:6px;bottom:6px;width:9px;height:9px;border-radius:50%;
+    box-shadow:0 0 0 2px var(--panel-bg);pointer-events:none;
+  }
+  #compactFormulaDot.valid{background:#2ea88a;}
+  #compactFormulaDot.invalid{background:#e0a734;}
 
 
   /* compact-mode tree view: near-fullscreen sheet (not the 60vh "more"
@@ -1289,26 +1316,24 @@
     </div>
     <div id="compactBarExpand">
       <div id="compactBarRow4">
-        <button class="compact-btn" id="cbMoreImport" title="导入 JSON">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-        </button>
-        <button class="compact-btn" id="cbMoreExport" title="导出 JSON">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>
-        </button>
+        <button class="compact-btn" id="cbMoreImport" title="导入 JSON">🚢</button>
+        <button class="compact-btn" id="cbMoreExport" title="导出 JSON">🚁</button>
         <button class="compact-btn" id="cbMoreTheme" title="切换主题">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
         </button>
-      </div>
-      <div id="compactBarRow5">
-        <button class="compact-btn compact-btn-wide" id="cbMoreDesktop" title="返回电脑模式">🖥 电脑模式</button>
-        <button class="compact-btn compact-btn-wide" id="cbMoreRaw" title="手机原始模式">📱 原始模式</button>
-      </div>
-      <div id="compactBarRow6">
+        <button class="compact-btn" id="cbMoreDesktop" title="返回电脑模式">🖥</button>
+        <button class="compact-btn" id="cbMoreRaw" title="手机原始模式">📱</button>
         <button class="compact-btn" id="cbMoreFit" title="回到全局">⛩</button>
       </div>
       <div id="compactBarRow7">
         <span id="cbLockHFitLabel">锁定水平适配屏幕</span>
         <button class="compact-btn" id="cbLockHFitToggle" title="开启后子节点群永远水平对齐屏幕（左右不溢出，上下可滚动）；关闭后恢复按外接矩形比例自动选择对齐方向">开</button>
+      </div>
+      <div id="compactBarRow8">
+        <div id="compactFormulaWrap">
+          <textarea id="compactFormulaInput" rows="2" spellcheck="false"></textarea>
+          <div id="compactFormulaDot"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2513,33 +2538,62 @@ function computeNodeBox(n, ignoreCrowd){
    diameter made its effective collision footprint huge in every direction,
    including straight up/down where the real rectangle is thin. */
 function boxRadius(w, h){ return Math.max(w, h)/2; }
-/* the shape's own half-extent measured ALONG one specific direction
-   (ux,uy must already be a unit vector) — used wherever two SPECIFIC
-   siblings' pairwise spacing is being judged, as opposed to boxRadius's
-   single isotropic "longest side / 2" figure used only for the rough,
-   one-time ring-placement estimate above. "给兄弟防碰撞机制变成xy分别
-   测量（适用于椭圆形和圆角矩形...圆形也可以自动适用）":
-     - rect (圆角矩形's corners are purely cosmetic — the actual collision
-       footprint is still the full axis-aligned bounding box): the exact
-       same "project the half-extents onto the direction of travel"
-       formula maxReachInAvail's own circle-boundary branch already uses
-       for an identical reason (see its own comment) — |ux|*halfW +
-       |uy|*halfH is the AABB's true half-width along an arbitrary
-       direction, not an over-estimate.
-     - circle/ellipse: sqrt((halfW*ux)² + (halfH*uy)²) is the exact
-       support-function value of an ellipse along direction (ux,uy) — a
-       circle is simply the special case halfW===halfH, where this
-       collapses to the constant radius automatically, needing no
-       separate branch.
-   Any OTHER/undefined shape string defensively falls through to the
-   ellipse branch (the smaller of the two for a given w/h whenever they
-   differ) rather than throwing, though every real caller's box always
-   carries one of the three shapes above (computeNodeBox/containerSize
-   never return anything else). */
+/* the OLD per-box measurement: the shape's own support-function value
+   (widest projection) along direction (ux,uy) — exact for a box measured
+   in isolation ONLY along the x/y axes; kept as-is for every pairing that
+   involves a circle/ellipse, since a circle's true radial reach happens to
+   exactly equal its support-function value in every direction (the one
+   shape where the two coincide) — verified via a rect-vs-rect Minkowski-sum
+   approach applied to a circle-circle pair at 45°: treating a circle as its
+   own bounding square there would introduce a NEW ~41% over-estimate at the
+   diagonal that does not exist in this per-box formula, so circle/ellipse
+   pairs deliberately keep using this instead of pairAvgRadius's rect-sum
+   shortcut below. */
 function effectiveRadiusAlong(w, h, shape, ux, uy){
   var halfW = w/2, halfH = h/2;
   if(shape==='rect') return Math.abs(ux)*halfW + Math.abs(uy)*halfH;
   return Math.sqrt((halfW*ux)*(halfW*ux) + (halfH*uy)*(halfH*uy));
+}
+/* PAIRWISE "average radius" for two sibling boxes along the direction
+   (ux,uy) between their centers (must already be a unit vector).
+   rect-vs-rect ONLY: two AABBs' Minkowski sum is EXACTLY another AABB
+   (halfW=halfWA+halfWB, halfH=halfHA+halfHB), and the true distance to
+   THAT combined AABB's boundary along (ux,uy) is min(halfWsum/|ux|,
+   halfHsum/|uy|) — whichever edge gets hit first. This is an EXACT (not
+   approximate) replacement for the old "effectiveRadiusAlong(A) +
+   effectiveRadiusAlong(B), averaged" two-step approach for this one case:
+   that two-step version measured each rect's OWN support-function value
+   (widest projection onto the direction) independently, which is only
+   exact ON the x/y axes — off-axis it systematically over-estimates,
+   producing the reported "距离的等高线不是矩形/圆角矩形/椭圆,反而是一个
+   类似双曲线的形状,朝着四个斜45度角有比较明显的突出" symptom for
+   rect-vs-rect pairs specifically. Dividing the combined touch-distance by
+   2 reproduces the OLD (ra+rb)/2 average exactly ON the x/y axes (ra+rb
+   there was already exactly halfWA+halfWB or halfHA+halfHB depending on
+   axis), so on-axis behavior is provably unchanged — only the diagonal
+   over-estimate is corrected.
+   ANY pairing involving a circle/ellipse (either box's shape !== 'rect')
+   falls back to the OLD per-box effectiveRadiusAlong sum instead — a
+   circle's true radial reach exactly equals its own support-function
+   value in every direction (the one shape where measuring it in isolation
+   is already exact, no Minkowski-sum shortcut needed or available), so
+   there is nothing to fix there; approximating an ellipse/circle by its
+   bounding rect to reuse the same rect-sum shortcut was tried and verified
+   to instead REGRESS a circle-circle pair at 45° by ~41% (over-estimating
+   further, not correcting anything) — "椭圆全都是横竖方向的,没有倾斜的"
+   is true, but this file has no elliptical Minkowski-sum closed form, so
+   this stays scoped to the one case (rect-rect) where an exact fix exists. */
+function pairAvgRadius(wA, hA, shapeA, wB, hB, shapeB, ux, uy){
+  if(shapeA==='rect' && shapeB==='rect'){
+    var halfWSum = wA/2 + wB/2, halfHSum = hA/2 + hB/2;
+    var ax = Math.abs(ux), ay = Math.abs(uy);
+    var touchDist;
+    if(ax<=0) touchDist = halfHSum/ay;
+    else if(ay<=0) touchDist = halfWSum/ax;
+    else touchDist = Math.min(halfWSum/ax, halfHSum/ay);
+    return touchDist/2;
+  }
+  return (effectiveRadiusAlong(wA, hA, shapeA, ux, uy) + effectiveRadiusAlong(wB, hB, shapeB, ux, uy)) / 2;
 }
 
 /* ============================================================
@@ -2675,15 +2729,12 @@ function computeCrowdScale(kids, avail){
       // gives the exact shrink needed to land the pair on that ratio.
       //
       // "防碰撞机制在x和y方向上测量半径" — avgR is no longer boxRadius's
-      // single isotropic "longest side / 2" figure; it's now each box's
-      // own effectiveRadiusAlong the ACTUAL direction toward the other box
-      // (ux,uy), so a wide-but-short pair sitting side-by-side (their
-      // connecting direction is nearly horizontal) is judged by how far
-      // each one actually reaches horizontally, not by its longer edge
-      // regardless of which way that edge happens to point — the exact
-      // same "project half-extents onto the direction of travel" idea
-      // maxReachInAvail's own circle-boundary branch already uses (see
-      // its comment) and effectiveRadiusAlong's own doc comment.
+      // single isotropic "longest side / 2" figure; it's now pairAvgRadius's
+      // EXACT combined-AABB touch-distance along the ACTUAL direction
+      // toward the other box (ux,uy) — see pairAvgRadius's own doc comment
+      // for why summing the two boxes' half-extents FIRST (rather than
+      // each box's own directional reach, summed after) is what keeps this
+      // exact off-axis too, not just on the x/y axes.
       // dist===0 (two centers exactly coincident) has no meaningful
       // direction to project onto — ux/uy would divide by zero into NaN,
       // which crowdScaleMap[k.id]=s at the end would then propagate onto
@@ -2698,9 +2749,7 @@ function computeCrowdScale(kids, avail){
       var avgR;
       if(dist>0){
         var ux=dx/dist, uy=dy/dist;
-        var ra = effectiveRadiusAlong(a.w, a.h, a.shape, ux, uy);
-        var rb = effectiveRadiusAlong(b.w, b.h, b.shape, ux, uy);
-        avgR = (ra+rb)/2;
+        avgR = pairAvgRadius(a.w, a.h, a.shape, b.w, b.h, b.shape, ux, uy);
       } else {
         avgR = (boxRadius(a.w,a.h) + boxRadius(b.w,b.h))/2;
       }
@@ -2889,9 +2938,7 @@ function relaxBoxes(boxes, iterations, allowCentering){
         // when two boxes start out exactly coincident, so no separate
         // zero-distance branch is needed here the way computeCrowdScale
         // needed one.
-        var ra = effectiveRadiusAlong(boxes[i].w, boxes[i].h, boxes[i].shape, ux, uy);
-        var rb = effectiveRadiusAlong(boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy);
-        var minGap = ra + rb + 34;
+        var minGap = pairAvgRadius(boxes[i].w, boxes[i].h, boxes[i].shape, boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy) + 34;
         if(d < minGap){
           var push = (minGap-d)*0.5;
           A.px -= ux*push; A.py -= uy*push;
@@ -2934,9 +2981,7 @@ function relaxFreshAgainstSettled(freshBoxes, settledBoxes, iterations){
         var uxa=dx/d, uya=dy/d;
         // "防碰撞机制在x和y方向上测量半径" — same directional-radius switch
         // as computeCrowdScale/relaxBoxes above.
-        var ra = effectiveRadiusAlong(Fi.w, Fi.h, Fi.shape, uxa, uya);
-        var rb = effectiveRadiusAlong(Fj.w, Fj.h, Fj.shape, uxa, uya);
-        var minGap = ra + rb + 34;
+        var minGap = pairAvgRadius(Fi.w, Fi.h, Fi.shape, Fj.w, Fj.h, Fj.shape, uxa, uya) + 34;
         if(d < minGap){
           var push = (minGap-d)*0.5;
           Fi.node.px -= uxa*push; Fi.node.py -= uya*push;
@@ -2948,9 +2993,7 @@ function relaxFreshAgainstSettled(freshBoxes, settledBoxes, iterations){
         var dx=Fi.node.px-S.node.px, dy=Fi.node.py-S.node.py;
         var d = Math.sqrt(dx*dx+dy*dy)||0.001;
         var uxb=dx/d, uyb=dy/d;
-        var raF = effectiveRadiusAlong(Fi.w, Fi.h, Fi.shape, uxb, uyb);
-        var raS = effectiveRadiusAlong(S.w, S.h, S.shape, uxb, uyb);
-        var minGap = raF + raS + 34;
+        var minGap = pairAvgRadius(Fi.w, Fi.h, Fi.shape, S.w, S.h, S.shape, uxb, uyb) + 34;
         if(d < minGap){
           var push = minGap-d;
           Fi.node.px += uxb*push; Fi.node.py += uyb*push;
@@ -4535,7 +4578,18 @@ function compactNodeMousedown(ev, el, n){
    nodeMousedown's own drilled-gated branch-vs-leaf distinction, just
    filtered to A/B like the rest of 手机精致模式 (C children never count). */
 function compactIsBranch(n){
-  return n.drilled && children(n.id).some(function(c){ return c.category!=='C'; });
+  // "任何ABC类节点都需要能触摸母节点背景,批量改变一级孩子可见性" — category
+  // must NOT gate this at all: a root whose children are ALL category C
+  // (or a C-category root itself) still needs background-tap to batch-
+  // cycle its children's vis exactly like an A/B-having root does. The
+  // OLD `children(n.id).some(c => c.category!=='C')` check silently fell
+  // through to the leaf-only `cycleVis(n)` branch below whenever every
+  // child happened to be C — toggling the ROOT's own vis, which has no
+  // visible effect since the root always renders in full — reproducing
+  // exactly "无法通过触摸背景墙切换所有孩子的可见度" for any root whose
+  // children are all C. Only n.drilled + "does it actually have children
+  // at all" matters here.
+  return n.drilled && children(n.id).length>0;
 }
 /* the actual visibility-cycle behavior shared by a normal node's tap
    (compactNodeTap, below) AND a tap on the current root's own
@@ -4549,7 +4603,14 @@ function compactIsBranch(n){
 function compactCycleNodeVis(n){
   pushUndo();
   if(compactIsBranch(n)){
-    var subtree = subtreeIds(n.id).map(node).filter(function(x){ return x && x.category!=='C'; });
+    // "任何ABC类节点都需要能触摸母节点背景,批量改变一级孩子可见性" — the
+    // OLD `.filter(x => x.category!=='C')` here silently excluded every
+    // C-category descendant from ever having its OWN vis toggled by this
+    // batch cycle at all (on top of compactIsBranch's own now-removed
+    // category gate above) — reproducing the same "无法通过触摸背景墙
+    // 切换可见度" symptom whenever a subtree was C-heavy. Category must
+    // not affect this batch cycle's membership in any way.
+    var subtree = subtreeIds(n.id).map(node).filter(Boolean);
     var maxVis = subtree.some(hasDetail) ? 2 : 1;
     // reference for "what's the next step": prefer a NON-drilled subtree
     // member — using the drilled anchor's OWN vis (what cycleVisBatch's
@@ -4570,9 +4631,9 @@ function compactCycleNodeVis(n){
     // x.drilled treated that leaf as "a container that must stay
     // visible" forever after, silently exempting it from every future
     // batch cycle its true-leaf siblings kept participating in.
-    // compactIsBranch additionally requires actual A/B children to exist,
-    // so a childless node is correctly treated as a plain leaf here
-    // regardless of whatever drilled happened to get left at.
+    // compactIsBranch additionally requires actual children to exist, so a
+    // childless node is correctly treated as a plain leaf here regardless
+    // of whatever drilled happened to get left at.
     var ref = subtree.filter(function(x){ return !compactIsBranch(x); })[0] || n;
     var next = (ref.vis>=maxVis) ? 0 : ref.vis+1;
     subtree.forEach(function(x){ x.vis = next; });
@@ -6546,6 +6607,17 @@ var randomButtonList = document.getElementById('randomButtonList');
 var railPinnedZone = document.getElementById('railPinnedZone');
 var rbDragButtonId = null; // id of the materialized button currently being dragged (from the panel list OR a pinned rail shortcut)
 var randomFormulaInput = document.getElementById('randomFormulaInput');
+var compactFormulaInput = document.getElementById('compactFormulaInput');
+var compactFormulaDot = document.getElementById('compactFormulaDot');
+// "拖拽区域下面再新建一个区域,用来存放电脑版随机选一的可编辑公式,要求和
+// 电脑版功能一样" — 手机精致模式 has no equivalent of renderRandomPanel's
+// own "re-sync on every open" call site (there is no separate open/close
+// state for compactBarExpand's contents — it's always present in the DOM,
+// just visually collapsed via max-height), so the textarea is seeded once
+// here at load time instead; refreshFormulaStatus's own sourceEl sync (see
+// its doc comment) keeps it caught up with any LATER edit made from either
+// textarea for the rest of the session.
+compactFormulaInput.value = state.randomFormula || DEFAULT_RANDOM_FORMULA;
 registerRailPanel(btnRandom, randomFlyout, function(){ renderRandomPanel(); });
 function renderRandomPanel(){
   // renderNav() now calls this on EVERY render() pass while the panel is
@@ -6740,25 +6812,45 @@ var randomFormulaDot = document.getElementById('randomFormulaDot');
    written into state.randomFormula; an invalid one leaves state untouched
    (the last known-good formula stays live for actual picking, exactly
    like evalRandomWeight's own per-node fallback), so a mid-edit typo can
-   never make random-pick silently start using a broken formula. */
-function refreshFormulaStatus(){
-  var text = randomFormulaInput.value;
+   never make random-pick silently start using a broken formula.
+   手机精致模式's own #compactFormulaInput/#compactFormulaDot (see their own
+   JS wiring further below) share this SAME function and state.randomFormula
+   — "要求和电脑版功能一样,包含橙色绿色公式状态指示灯" — rather than a
+   second, easily-drifting reimplementation. sourceEl identifies which of
+   the two textareas just triggered this call, so the OTHER one's value is
+   kept in sync too (unless the user currently has THAT one focused, which
+   would otherwise stomp their own in-progress edit there — the exact same
+   guard renderRandomPanel already applies to randomFormulaInput itself). */
+function refreshFormulaStatus(sourceEl){
+  sourceEl = sourceEl || randomFormulaInput;
+  var text = sourceEl.value;
+  var dots = [randomFormulaDot, compactFormulaDot];
   if(formulaIsValid(text)){
     state.randomFormula = text;
     scheduleSave();
-    randomFormulaDot.className = 'valid';
-    randomFormulaDot.title = '公式有效，已应用';
+    [randomFormulaInput, compactFormulaInput].forEach(function(el){
+      if(el!==sourceEl && document.activeElement!==el) el.value = text;
+    });
+    dots.forEach(function(d){ d.className = 'valid'; d.title = '公式有效，已应用'; });
   } else {
-    randomFormulaDot.className = 'invalid';
-    randomFormulaDot.title = '公式当前有误（语法错误或对某些取值返回非法权重），仍使用上一个有效公式';
+    dots.forEach(function(d){
+      d.className = 'invalid';
+      d.title = '公式当前有误（语法错误或对某些取值返回非法权重），仍使用上一个有效公式';
+    });
   }
 }
-randomFormulaInput.addEventListener('input', refreshFormulaStatus);
+randomFormulaInput.addEventListener('input', function(){ refreshFormulaStatus(randomFormulaInput); });
 // blur also re-checks — covers non-keystroke edits (paste via menu, etc.)
 // and guarantees the dot's final state is always in sync with what's
 // actually in the box the moment focus leaves it, per "失焦时候也要实时
 // 更新小圆圈状态".
-randomFormulaInput.addEventListener('blur', refreshFormulaStatus);
+randomFormulaInput.addEventListener('blur', function(){ refreshFormulaStatus(randomFormulaInput); });
+// 手机精致模式's own formula textarea — same input/blur wiring, just
+// pointed at the OTHER of the two textareas so refreshFormulaStatus's own
+// sourceEl-vs-other-element sync logic (see its doc comment) keeps both in
+// lockstep regardless of which one the user actually typed into.
+compactFormulaInput.addEventListener('input', function(){ refreshFormulaStatus(compactFormulaInput); });
+compactFormulaInput.addEventListener('blur', function(){ refreshFormulaStatus(compactFormulaInput); });
 
 /* materialize dialog: name field + a tree of checkboxes restricted to A/B
    category nodes (C nodes never show — "这里tree不需要展示C类节点"). Checking
@@ -7069,7 +7161,7 @@ function symmetrizeChildrenOf(parentId){
   // threshold computeCrowdScale itself enforces, so a fresh reset can
   // never immediately re-trigger its own shrink.
   //
-  // "防碰撞机制在x和y方向上测量半径" — avgR now uses effectiveRadiusAlong
+  // "防碰撞机制在x和y方向上测量半径" — avgR now uses pairAvgRadius
   // (see computeCrowdScale's own comment for the full rationale) instead
   // of boxRadius's isotropic figure, so this stays in lockstep with what
   // computeCrowdScale will actually measure on the very next render — the
@@ -7090,9 +7182,7 @@ function symmetrizeChildrenOf(parentId){
       var unitDist = Math.sqrt(dx*dx+dy*dy);
       if(unitDist<=0) continue;
       var ux=dx/unitDist, uy=dy/unitDist;
-      var ra = effectiveRadiusAlong(boxes[i].w, boxes[i].h, boxes[i].shape, ux, uy);
-      var rb = effectiveRadiusAlong(boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy);
-      var avgR = (ra+rb)/2;
+      var avgR = pairAvgRadius(boxes[i].w, boxes[i].h, boxes[i].shape, boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy);
       var needed = (avgR*relaxMult)/unitDist;
       if(needed>cellSize) cellSize = needed;
     }
