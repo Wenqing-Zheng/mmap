@@ -346,6 +346,23 @@
     position:fixed;inset:0;background:rgba(20,22,30,.28);z-index:3000;display:none;align-items:center;justify-content:center;
   }
   #rbMaterializeOverlay.show{display:flex;}
+  /* "修MI"批量修改弹窗 — reuses the exact stepper markup/CSS classes
+     (.id-attr-grid/.id-stat-col/.id-stat-stepper/.mini-btn/.id-btn) the
+     desktop+精致模式insert/edit dialog already defines below, so only the
+     overlay/dialog shell itself and this dialog's own .id-row need new
+     rules here — "格式和信息编辑框里面一样". */
+  #statEditOverlay{
+    position:fixed;inset:0;background:rgba(20,22,30,.28);z-index:3000;display:none;align-items:center;justify-content:center;
+    touch-action:manipulation;
+  }
+  #statEditOverlay.show{display:flex;}
+  #statEditDialog{
+    width:320px;background:var(--panel-bg);border-radius:16px;box-shadow:var(--shadow);padding:18px;
+    touch-action:manipulation;
+  }
+  #statEditDialog .id-label{font-size:11px;color:var(--text-dim);font-weight:600;margin-bottom:10px;letter-spacing:.4px;}
+  #statEditDialog .id-attr-grid{grid-template-columns:repeat(2,1fr);}
+  #statEditDialog .id-row{display:flex;justify-content:space-between;align-items:center;}
   #rbMaterializeDialog{
     width:380px;max-height:70vh;display:flex;flex-direction:column;background:var(--panel-bg);border-radius:16px;
     box-shadow:var(--shadow);padding:18px;
@@ -1052,12 +1069,14 @@
      it — a second tap, closing the sheet, or a badge-tap jump all count
      as "什么都不操作...直接取消"). margin-left:auto pushes it to the
      header's own far right without needing a separate flex wrapper. */
-  #cbTreeMoveToggle{
-    margin-left:auto;flex-shrink:0;cursor:pointer;font-weight:700;
+  #cbStatEditToggle, #cbTreeMoveToggle{
+    flex-shrink:0;cursor:pointer;font-weight:700;
     font-size:clamp(11px,2.8vw,13px);padding:5px 10px;border-radius:8px;
     background:rgba(120,130,160,.14);color:var(--text-dim);
   }
-  #cbTreeMoveToggle.active{background:#d1495b;color:#fff;}
+  /* "修MI"按钮是这一对里第一个,margin-left:auto把两个按钮一起推到header最右边 */
+  #cbStatEditToggle{margin-left:auto;}
+  #cbStatEditToggle.active, #cbTreeMoveToggle.active{background:#d1495b;color:#fff;}
   /* "tree view左上角那个退出按钮‹,不好触发太小了,放大3倍" — the OLD
      rule sized only the glyph itself (font-size), leaving its actual tap
      target exactly as small as the "‹" character's own glyph box — easy
@@ -1104,6 +1123,16 @@
     background:#d1495b;padding:0;width:clamp(22px,5.6vw,26px);
     display:flex;align-items:center;justify-content:center;
     font-size:clamp(13px,3.2vw,15px);line-height:1;
+  }
+  /* "修MI"模式下每行左侧(挪动按钮左边)的"修"按钮 — same pill shape/height as
+     ctv-move-child/ctv-move-sibling, distinct purple so it's not confused
+     with 挪动模式's own green 孩子/兄弟 buttons when a user somehow has both
+     memories at once (though the two modes are mutually exclusive — see
+     treeStatEditModeOn's own comment). */
+  .ctv-stat-edit-btn{
+    flex-shrink:0;font-size:clamp(10px,2.4vw,11px);font-weight:700;color:#fff;
+    padding:4px clamp(6px,1.8vw,9px);border-radius:7px;cursor:pointer;
+    background:#8854d0;margin-left:auto;
   }
   /* long-press-drag-to-reparent visuals, mirroring desktop's own
      .tv-drop-line/.tv-row.tv-drop-inside/.tv-row.tv-dragging exactly (see
@@ -1285,7 +1314,7 @@
   </div>
 
   <div id="compactTreeSheet">
-    <div id="compactTreeHead"><span id="compactTreeBack">‹</span>树状视图<span id="cbTreeMoveToggle">挪动</span></div>
+    <div id="compactTreeHead"><span id="compactTreeBack">‹</span>树状视图<span id="cbStatEditToggle">修MI</span><span id="cbTreeMoveToggle">挪动</span></div>
     <div id="compactTreeList"></div>
   </div>
 
@@ -1435,6 +1464,37 @@
       <button class="id-btn id-btn-delete" id="insertDeleteBtn">删除</button>
       <button class="id-btn plain" id="insertCancelBtn">取消</button>
       <button class="id-btn primary" id="insertOkBtn">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="statEditOverlay">
+  <div id="statEditDialog">
+    <div class="id-label">批量修改子树（该节点及全部子树的A/B类节点，C类不受影响）</div>
+    <div class="id-attr-grid" id="statEditGrid">
+      <div class="id-stat-col">
+        <span class="id-stat-label">线条数</span>
+        <div class="id-stat-stepper" id="statEditBorderLinesStepper">
+          <button class="mini-btn" data-dir="-1">－</button>
+          <span id="statEditBorderLinesValue">1</span>
+          <button class="mini-btn" data-dir="1">＋</button>
+        </div>
+      </div>
+      <div class="id-stat-col">
+        <span class="id-stat-label">熟练度</span>
+        <div class="id-stat-stepper" id="statEditMasterLevelStepper">
+          <button class="mini-btn" data-dir="-1">－</button>
+          <span id="statEditMasterLevelValue">1</span>
+          <button class="mini-btn" data-dir="1">＋</button>
+        </div>
+      </div>
+    </div>
+    <div class="id-row">
+      <span></span>
+      <div class="id-actions">
+        <button class="id-btn plain" id="statEditCancelBtn">取消</button>
+        <button class="id-btn primary" id="statEditOkBtn">确定</button>
+      </div>
     </div>
   </div>
 </div>
@@ -4977,7 +5037,7 @@ document.addEventListener('keydown', function(e){
   //      too, matching the plain "nothing selected, blank nav" reset.
   //   2. a selected/glowing node -> clear just that
   //   3. focus resting on a rail button -> blur it
-  if(e.key==='Escape' && !insertOverlay.classList.contains('show') && !rbMaterializeOverlay.classList.contains('show')){
+  if(e.key==='Escape' && !insertOverlay.classList.contains('show') && !rbMaterializeOverlay.classList.contains('show') && !statEditOverlayEl.classList.contains('show')){
     // the size gauge has its own independent lifetime (see triggerSizeGauge)
     // and Esc always dismisses it immediately regardless of which OTHER
     // layer this same Escape press goes on to clear below.
@@ -7542,6 +7602,7 @@ document.addEventListener('mousedown', function(e){
   // whole tree view out from under the still-open edit dialog.
   if(e.target.closest('#insertOverlay')) return;
   if(e.target.closest('#rbMaterializeOverlay')) return;
+  if(e.target.closest('#statEditOverlay')) return;
   if(anyRailPanelOpen() && !e.target.closest('#searchFlyout') && !e.target.closest('#treeFlyout')
      && !e.target.closest('#paramsFlyout') && !e.target.closest('#randomFlyout') && !e.target.closest('#rail')){
     closeAllRailPanels();
@@ -8064,8 +8125,10 @@ function closeCompactTreeSheet(){
   // "如果退出tree view...也直接取消挪动功能" — leaving the sheet with
   // move-mode still armed would otherwise leave treeMoveSourceId pointing
   // at a pick the user can no longer see or act on the next time the
-  // sheet reopens.
+  // sheet reopens. "修MI"模式有同样的"退出tree view跳转等则取消修改模式"
+  // 要求,一并disarm.
   setTreeMoveMode(false);
+  setTreeStatEditMode(false);
 }
 document.getElementById('compactTreeBack').addEventListener('click', closeCompactTreeSheet);
 // "点开树视图后...最右边添加一个按钮'挪动'" — a 2-state toggle (armed/not)
@@ -8080,7 +8143,13 @@ function setTreeMoveMode(on){
   treeMoveModeOn = on;
   treeMoveSourceId = null;
   cbTreeMoveToggleEl.classList.toggle('active', on);
-  renderCompactTreeView();
+  // 挪动 and 修MI are mutually exclusive edit modes on the same rows —
+  // arming one disarms the other, matching "再次按下自身或者退出tree view
+  // 跳转等则取消修改模式"'s own all-or-nothing semantics but extended so
+  // switching straight from one mode to the other doesn't leave stray
+  // per-row buttons from both modes visible at once.
+  if(on && treeStatEditModeOn) setTreeStatEditMode(false);
+  else renderCompactTreeView();
 }
 cbTreeMoveToggleEl.addEventListener('click', function(){
   // "如果什么都不操作,直接再按一次挪动,挪动再次变灰,功能取消" — plain
@@ -8090,6 +8159,25 @@ cbTreeMoveToggleEl.addEventListener('click', function(){
   // same all-or-nothing cancel semantics).
   setTreeMoveMode(!treeMoveModeOn);
 });
+// "修MI"批量修改子树属性模式 — same toggle shape as 挪动 above (armed/not,
+// red when active, disarmed by a second tap, by closing the sheet, or by
+// tag-click navigation — renderCompactTreeView's tag click handler already
+// calls closeCompactTreeSheet() on jump, so that path is covered for free).
+// Unlike 挪动 there's no extra "picked source" sub-state to reset — each
+// row's own "修" button is a fully self-contained action (opens the popup,
+// commits or cancels), nothing carries over between rows.
+var cbStatEditToggleEl = document.getElementById('cbStatEditToggle');
+var treeStatEditModeOn = false;
+function setTreeStatEditMode(on){
+  treeStatEditModeOn = on;
+  cbStatEditToggleEl.classList.toggle('active', on);
+  if(on && treeMoveModeOn) setTreeMoveMode(false);
+  else renderCompactTreeView();
+}
+cbStatEditToggleEl.addEventListener('click', function(){
+  setTreeStatEditMode(!treeStatEditModeOn);
+});
+
 /* left-edge-inward swipe OR downward swipe anywhere on the sheet closes
    it — "屏幕左侧内滑或者屏幕中间下滑关闭" — both common mobile
    dismiss gestures. Tracked via plain mousedown/move/up (this file has no
@@ -8396,6 +8484,22 @@ function renderCompactTreeView(){
     summary.className = 'ctv-summary';
     summary.textContent = richToPlain(n.summary) || '(未命名)';
     row.appendChild(summary);
+    // "修MI"模式下每行(包括树根,与挪动模式的选择/孩子/兄弟同样对根节点也
+    // 生效一致)出现的"修"按钮 — 打开批量修改子树属性弹窗. margin-left:auto
+    // on this button pushes it (and it alone, since treeMoveModeOn's own
+    // buttons never coexist on the same row — the two modes are mutually
+    // exclusive, see setTreeStatEditMode/setTreeMoveMode) flush to the
+    // row's right edge, matching ctv-move-pick's own positioning role.
+    if(treeStatEditModeOn){
+      var statEditBtn = document.createElement('span');
+      statEditBtn.className = 'ctv-stat-edit-btn';
+      statEditBtn.textContent = '修';
+      statEditBtn.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        openStatEditDialog(id);
+      });
+      row.appendChild(statEditBtn);
+    }
     // "挪动"模式下每行右侧的3个按钮 — "选择"/"孩子"/"兄弟". Rendered on
     // EVERY row (including the tree root, matching how the existing
     // long-press-drag reparent already treats the root as a valid drop
@@ -8486,6 +8590,75 @@ function renderCompactTreeView(){
     }
   })(state.rootId, 0);
 }
+
+/* "修MI"批量修改弹窗 — statEditTargetId is the tapped node (id + full
+   subtree gets the propagation, not just its children); the two "did the
+   user actually touch this stepper" flags are what make "只有调整过数值的
+   那一项会应用" possible — each stepper's own click handler below sets its
+   flag the first time it's pressed, and commitStatEditDialog only calls
+   propagateStatDown for fields whose flag is true, exactly mirroring
+   pendingInsertBorderLines/pendingInsertMasterLevel's existing "uncommitted
+   local value until confirm" pattern from the insert dialog, but scoped to
+   subtree-wide propagation instead of a single new node's own fields. */
+var statEditOverlayEl = document.getElementById('statEditOverlay');
+var statEditBorderLinesValueEl = document.getElementById('statEditBorderLinesValue');
+var statEditMasterLevelValueEl = document.getElementById('statEditMasterLevelValue');
+var statEditTargetId = null;
+var statEditBorderLines = BORDER_LINES_DEFAULT;
+var statEditMasterLevel = MASTER_LEVEL_DEFAULT;
+var statEditBorderLinesTouched = false;
+var statEditMasterLevelTouched = false;
+function refreshStatEditUI(){
+  statEditBorderLinesValueEl.textContent = statEditBorderLines;
+  statEditMasterLevelValueEl.textContent = statEditMasterLevel;
+}
+function openStatEditDialog(id){
+  var n = node(id); if(!n) return;
+  statEditTargetId = id;
+  // starting values come from the TAPPED node itself, purely as a
+  // reasonable default the stepper displays — they are NOT what gets
+  // propagated unless the user actually moves the stepper away from
+  // them (statEditBorderLinesTouched/statEditMasterLevelTouched below).
+  statEditBorderLines = clamp(n.borderLines||BORDER_LINES_DEFAULT, BORDER_LINES_MIN, BORDER_LINES_MAX);
+  statEditMasterLevel = clamp(n.masterLevel||MASTER_LEVEL_DEFAULT, MASTER_LEVEL_MIN, MASTER_LEVEL_MAX);
+  statEditBorderLinesTouched = false;
+  statEditMasterLevelTouched = false;
+  refreshStatEditUI();
+  statEditOverlayEl.classList.add('show');
+}
+function closeStatEditDialog(){
+  statEditOverlayEl.classList.remove('show');
+  statEditTargetId = null;
+}
+function commitStatEditDialog(){
+  if(!statEditTargetId) return;
+  var id = statEditTargetId;
+  if(!statEditBorderLinesTouched && !statEditMasterLevelTouched){ closeStatEditDialog(); return; }
+  pushUndo();
+  if(statEditBorderLinesTouched) propagateStatDown(id, 'borderLines', statEditBorderLines);
+  if(statEditMasterLevelTouched) propagateStatDown(id, 'masterLevel', statEditMasterLevel);
+  closeStatEditDialog();
+  scheduleSave();
+  renderCompactTreeView();
+  render();
+}
+document.getElementById('statEditBorderLinesStepper').addEventListener('click', function(ev){
+  var btn = ev.target.closest('button'); if(!btn) return;
+  var dir = parseInt(btn.dataset.dir, 10);
+  statEditBorderLines = clamp(statEditBorderLines+dir, BORDER_LINES_MIN, BORDER_LINES_MAX);
+  statEditBorderLinesTouched = true;
+  refreshStatEditUI();
+});
+document.getElementById('statEditMasterLevelStepper').addEventListener('click', function(ev){
+  var btn = ev.target.closest('button'); if(!btn) return;
+  var dir = parseInt(btn.dataset.dir, 10);
+  statEditMasterLevel = clamp(statEditMasterLevel+dir, MASTER_LEVEL_MIN, MASTER_LEVEL_MAX);
+  statEditMasterLevelTouched = true;
+  refreshStatEditUI();
+});
+document.getElementById('statEditCancelBtn').addEventListener('click', closeStatEditDialog);
+document.getElementById('statEditOkBtn').addEventListener('click', commitStatEditDialog);
+statEditOverlayEl.addEventListener('mousedown', function(e){ if(e.target===statEditOverlayEl) closeStatEditDialog(); });
 
 function refreshCompactDepthUI(){ compactDepthValueEl.textContent = appParams.maxAutoDepth; }
 compactDepthMinusEl.addEventListener('click', function(){
