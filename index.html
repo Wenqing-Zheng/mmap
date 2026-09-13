@@ -623,6 +623,12 @@
   .id-btn{border:none;border-radius:9px;padding:7px 15px;font-size:12.5px;cursor:pointer;}
   .id-btn.primary{background:var(--accent);color:#fff;}
   .id-btn.plain{background:rgba(120,130,160,.14);color:var(--text-main);}
+  /* "最底下取消左边加一个红色的删除" — pinned to the far left of the same
+     row 取消/确定 sit in, via margin-right:auto (the row itself stays
+     justify-content:center for 取消/确定's own pairing, so this can't just
+     be order:-1 without also fighting that centering). Deletes the WHOLE
+     subtree — see id-btn-delete's own click handler for the confirm step. */
+  .id-btn-delete{background:#d1495b;color:#fff;margin-right:auto;}
 
   /* 手机精致模式's own edit-dialog re-layout: full-bleed page instead of a
      floating centered card — "不要像电脑那样悬浮弹窗，而是直接手机全屏用
@@ -1426,6 +1432,7 @@
       </div>
     </div>
     <div class="id-actions" id="insertActionsRow">
+      <button class="id-btn id-btn-delete" id="insertDeleteBtn">删除</button>
       <button class="id-btn plain" id="insertCancelBtn">取消</button>
       <button class="id-btn primary" id="insertOkBtn">确定</button>
     </div>
@@ -1598,15 +1605,17 @@ var COMPACT_SUMMARY_MAX_LINES = 3;
 var COMPACT_DETAIL_MAX_LINES = 4;
 
 /* random-pick ("随机选一") panel: weighting formula, expressed as plain JS
-   so the user can rewrite it from the panel itself. Inputs: importance
-   (1-5, ＝该节点的边框线条数 — see importanceOf), masterLevel (1-5). Must
-   return a non-negative weight; nodes are then picked with probability
-   proportional to their weight (see pickRandomBNode). Below-threshold
-   mastery gets a large bonus — "master小于阈值则大幅增大概率" — with the
-   threshold written directly into the formula text as a literal number
-   (no separate Th stepper control anymore — "Th也删掉,直接从公式里面编辑
-   文本就能支持"). */
-var DEFAULT_RANDOM_FORMULA = 'importance * (6 - masterLevel) + (masterLevel < 2 ? 20 : 0)';
+   so the user can rewrite it from the panel itself. Inputs: i (=importance,
+   1-5, ＝该节点的边框线条数 — see importanceOf), m (=masterLevel, 1-5) —
+   "公式的变量不要输入长单词,直接改成小写字母i,m" — short single-letter
+   names are much faster to type/read in the small textarea than the full
+   words were. Must return a non-negative weight; nodes are then picked
+   with probability proportional to their weight (see pickRandomBNode).
+   Below-threshold mastery gets a large bonus — "master小于阈值则大幅增大
+   概率" — with the threshold written directly into the formula text as a
+   literal number (no separate Th stepper control anymore — "Th也删掉,直接
+   从公式里面编辑文本就能支持"). */
+var DEFAULT_RANDOM_FORMULA = 'i * (6 - m) + (m < 2 ? 20 : 0)';
 
 /* escapes a plain-text string for safe insertion as HTML — used only when
    rendering wrapText's own plain-text sLines/dLines (手机精致模式's
@@ -1760,6 +1769,18 @@ function sanitizeRandomButtons(s){
   // would now throw on every evaluation for the exact same reason.
   if(typeof s.randomFormula!=='string' || /\bshowCount\b|\bN\b|\bTh\b/.test(s.randomFormula)){
     s.randomFormula = DEFAULT_RANDOM_FORMULA;
+  } else if(/\bimportance\b|\bmasterLevel\b/.test(s.randomFormula)){
+    // "公式的变量不要输入长单词,直接改成小写字母i,m" — evalRandomWeight/
+    // formulaIsValid now call the compiled function with (i, m) params, not
+    // (importance, masterLevel), so a formula SAVED before this rename
+    // would throw a ReferenceError on every single evaluation (caught ->
+    // silently falls back to weight 1, same "public failure" as the
+    // showCount/Th cases above). Rewriting the old names forward in place
+    // (rather than discarding the whole formula to DEFAULT_RANDOM_FORMULA)
+    // preserves whatever custom weighting logic the user had already
+    // written — only the two variable names actually changed, not the
+    // formula's own meaning.
+    s.randomFormula = s.randomFormula.replace(/\bimportance\b/g, 'i').replace(/\bmasterLevel\b/g, 'm');
   }
   delete s.randomN;
   delete s.randomTh;
@@ -1931,7 +1952,7 @@ function randomButtonScopeBNodes(btn){
    weight (1) rather than breaking the whole picker. */
 function evalRandomWeight(formula, n){
   try{
-    var fn = new Function('importance','masterLevel', 'return ('+formula+');');
+    var fn = new Function('i','m', 'return ('+formula+');');
     var w = fn(importanceOf(n), n.masterLevel);
     return (typeof w==='number' && isFinite(w) && w>=0) ? w : 0;
   }catch(e){ return 1; }
@@ -1940,15 +1961,15 @@ function evalRandomWeight(formula, n){
    evalRandomWeight (which always falls back to a safe neutral weight so a
    bad formula never breaks actual picking), this must be able to say
    "no, this text is currently broken" so the UI can refuse to apply it.
-   Tests against every combination of importance(1-5) x masterLevel(1-5),
+   Tests against every combination of i(1-5) x m(1-5),
    not just one sample point, since a formula can throw only for particular
-   inputs (e.g. dividing by masterLevel-3) and still compile/run fine for
+   inputs (e.g. dividing by m-3) and still compile/run fine for
    others — real B nodes span the whole 1-5 range on both axes, so anything
    that fails even one combination WOULD eventually throw or misbehave for
    some real node. */
 function formulaIsValid(formula){
   try{
-    var fn = new Function('importance','masterLevel', 'return ('+formula+');');
+    var fn = new Function('i','m', 'return ('+formula+');');
     for(var imp=1; imp<=5; imp++){
       for(var ml=1; ml<=5; ml++){
         var w = fn(imp, ml);
@@ -2215,37 +2236,6 @@ function insertSibling(id, dir, summary, detail){
   state.nodes[newId].category = defaultCategoryForParent(pn.id);
   var idx = pn.children.indexOf(id);
   pn.children.splice(dir<0?idx:idx+1, 0, newId);
-  return newId;
-}
-/* insert a new node B as the SOLE child of A (id), moving every one of A's
-   existing children under B instead — "新建一个节点B，作为当前选中节点A的
-   孩子节点，并且，原先当前选中的A的所有孩子，都变成B的孩子，A的孩子只有一个
-   孩子那就是B". B's own default category follows the normal parent-driven
-   rule (defaultCategoryForParent(A)); the children being relocated keep
-   their own category unchanged — only their parentId moves, same as
-   removeFromParent/reparenting elsewhere in the app never touches category. */
-function insertWrapChild(id, summary, detail){
-  var n = node(id); if(!n) return null;
-  var newId = uid('n');
-  state.nodes[newId] = makeNode(newId, id, summary, detail);
-  state.nodes[newId].category = defaultCategoryForParent(id);
-  var newNode = state.nodes[newId];
-  newNode.children = n.children.slice();
-  newNode.children.forEach(function(cid){
-    var c = node(cid);
-    if(c) c.parentId = newId;
-  });
-  n.children = [newId];
-  // "彻底去掉这些约束" — the A>B>C rank-fixup that used to run here
-  // (bumping a relocated child's category up if wrapping it under a
-  // lower-rank new parent would otherwise "violate the hierarchy") is
-  // removed along with setNodeCategory's own propagation; a relocated
-  // child now simply keeps whatever category it already had, exactly
-  // like removeFromParent/reparenting anywhere else in this file.
-  // A was showing its children directly (drilled) before wrapping — keep
-  // that same visual continuity through the new intermediate node instead
-  // of the grandchildren suddenly disappearing behind a freshly-collapsed B.
-  if(n.drilled) newNode.drilled = true;
   return newId;
 }
 
@@ -4505,6 +4495,7 @@ var insertBorderStyleBtn = document.getElementById('insertBorderStyleBtn');
 var insertBorderLinesValueEl = document.getElementById('insertBorderLinesValue');
 var insertMasterLevelValueEl = document.getElementById('insertMasterLevelValue');
 var insertSizeValueEl = document.getElementById('insertSizeValue');
+var insertDeleteBtn = document.getElementById('insertDeleteBtn');
 var pendingInsert = null; // {kind, anchorId, dir, batch, editNode}
 var focusBeforeInsertDialog = null;
 // defaults for a NEW node being created in this dialog — all ignored in
@@ -4632,7 +4623,7 @@ function openInsertDialog(cfg){
   // reused here for whichever anchor node the new node would be inserted
   // relative to (child/sibling both derive from the SAME parent).
   if(!cfg.node){
-    var parentIdForDefault = (cfg.mode==='child' || cfg.mode==='wrapChild') ? cfg.anchorId : (parentOf(cfg.anchorId)||{}).id;
+    var parentIdForDefault = (cfg.mode==='child') ? cfg.anchorId : (parentOf(cfg.anchorId)||{}).id;
     pendingInsertCategory = parentIdForDefault ? defaultCategoryForParent(parentIdForDefault) : 'A';
     pendingInsertBorderLines = BORDER_LINES_DEFAULT;
     pendingInsertMasterLevel = MASTER_LEVEL_DEFAULT;
@@ -4643,6 +4634,13 @@ function openInsertDialog(cfg){
   refreshInsertStatUI();
   insertOverlay.classList.add('show');
   insertBatchBadge.classList.toggle('show', !!cfg.batch);
+  // "opt单击的时候弹窗的那个手机电脑共享的信息编辑框,最底下取消左边加一个
+  // 红色的删除...点击删除的行为是删除全部子节点子树" — only meaningful in
+  // mode:'edit' (there's a real, already-existing node to delete; every
+  // other mode is still creating a brand-new one that doesn't exist yet),
+  // and never for the ultimate root (same hard guard deleteSubtree/
+  // deleteNodeOnly/openTreeDeleteMenu all already enforce elsewhere).
+  insertDeleteBtn.style.display = (cfg.mode==='edit' && cfg.node.id!==state.rootId) ? '' : 'none';
   // "按➕和未归纳加号时...直接引导手机输入法弹出...长按节点编辑信息的时候
   // 同样的窗口不要让输入法自动弹出,只是两个新建节点按钮要自动弹出" —
   // scoped to 手机精致模式 only (desktop/手机原始模式 keep their prior
@@ -4707,10 +4705,6 @@ function commitInsertDialog(){
       var anchor = node(cfg.anchorId);
       newId = addChild(cfg.anchorId, sVal, dVal);
       anchor.drilled = true;
-    } else if(cfg.mode==='wrapChild'){
-      var wrapAnchor = node(cfg.anchorId);
-      newId = insertWrapChild(cfg.anchorId, sVal, dVal);
-      wrapAnchor.drilled = true;
     } else if(cfg.mode==='parent'){
       newId = insertParentAbove(cfg.anchorId);
       state.nodes[newId].summary = sVal;
@@ -4758,6 +4752,26 @@ function commitInsertDialog(){
 }
 document.getElementById('insertOkBtn').addEventListener('click', commitInsertDialog);
 document.getElementById('insertCancelBtn').addEventListener('click', closeInsertDialog);
+// "点击删除以后先弹窗确认再执行删除" — same confirm() + pushUndo() +
+// deleteSubtree() pattern as openTreeDeleteMenu's own "删除此节点及全部
+//子树" option; this button is only ever shown for mode:'edit' (see
+// openInsertDialog's own display toggle), so pendingInsert.node always
+// exists here.
+insertDeleteBtn.addEventListener('click', function(){
+  if(!pendingInsert || pendingInsert.mode!=='edit') return;
+  var n = pendingInsert.node;
+  var summary = richToPlain(n.summary) || '(未命名)';
+  if(!confirm('删除节点"'+summary+'"及其全部子节点？此操作可用 ⌘Z 撤销。')) return;
+  pushUndo();
+  var deletedIds = subtreeIds(n.id);
+  deleteSubtree(n.id);
+  if(treeMoveSourceId && deletedIds.indexOf(treeMoveSourceId)!==-1) treeMoveSourceId = null;
+  closeInsertDialog();
+  scheduleSave();
+  if(typeof renderCompactTreeView==='function' && compactTreeSheetEl.classList.contains('open')) renderCompactTreeView();
+  if(treeFlyout && treeFlyout.classList.contains('open')) renderTreeView();
+  render();
+});
 insertOverlay.addEventListener('mousedown', function(e){ if(e.target===insertOverlay) closeInsertDialog(); });
 /* 手机精致模式's full-screen editor closes via the same "下滑中间/左滑
    内滑" dismiss gestures every other compact-mode sheet uses, auto-saving
@@ -4800,7 +4814,16 @@ insertOverlay.addEventListener('mousedown', function(e){ if(e.target===insertOve
     // finished composing the text.
     if(e.isComposing || e.keyCode===229) return;
     if((e.metaKey||e.ctrlKey) && (e.key==='b'||e.key==='B')){ e.preventDefault(); document.execCommand('bold'); return; }
-    if((e.metaKey||e.ctrlKey) && e.key==='Enter'){ e.preventDefault(); commitInsertDialog(); return; }
+    // "opt回车激活信息编辑框,然后cmd enter保存...会同时触发可见度切换" —
+    // missing stopPropagation() here (unlike the Escape branch right below,
+    // which already has it) let this same keydown bubble up to document's
+    // own global listener, whose ⌘Enter branch runs cycleVis — one
+    // keypress landing on TWO handlers. preventDefault() alone only stops
+    // the browser's own native action (e.g. Enter's default newline); it
+    // never stops the event from continuing to bubble to ancestor
+    // listeners, so it did nothing to prevent the second handler from
+    // ALSO firing.
+    if((e.metaKey||e.ctrlKey) && e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); commitInsertDialog(); return; }
     if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeInsertDialog(); return; }
     // plain Enter (with or without Shift) always inserts a line break within
     // the same textbox in both Summary and Detail — only ⌘Enter saves+closes.
@@ -5106,14 +5129,48 @@ document.addEventListener('keydown', function(e){
   }
 
   if(e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey){
-    var dirMap = {ArrowDown:'wrapChild', ArrowUp:'parent', ArrowRight:'sibling-r', ArrowLeft:'sibling-l'};
+    // "选中节点然后opt⬇️,目前是把所有当前节点的孩子,封装在一个新建的节点
+    // 中...修改成:新建一个孩子节点,和现有的选中的节点的其他孩子同为兄弟"
+    // — ⌥↓ now opens the SAME dialog every other single-child insert path
+    // uses (mode:'child', see cbAddChild/addChild) instead of the old
+    // wrapChild behavior ("insert an intermediate node between anchor and
+    // all its EXISTING children") — the tree view's own ⌥↓ got the
+    // identical change (see handleTreeRowKeydown), and insertWrapChild
+    // itself was deleted once both call sites moved off it.
+    //
+    // "option+四个方向键新建完节点以后,都要加一个视角reset,让画面处于新
+    // 添加的节点位于可见区域一级孩子且可见区域根节点缩放到全屏" — onCommit
+    // fires exactly once, right after a REAL (non-empty) commit, with the
+    // new node's own id (see commitInsertDialog's own onCommit call). The
+    // new node's DIRECT PARENT is what must become the visible focus root
+    // for "新节点是一级孩子" to hold — for ⌥↓ (mode:'child') that parent
+    // IS cur itself; for ⌥↑ (mode:'parent') it's the brand-new node that
+    // just became cur's own parent; for ⌥←/→ (mode:'sibling') it's cur's
+    // EXISTING parent, since the new node lands as a sibling of cur under
+    // that same parent, not under cur. Reading parentId off the new node
+    // itself (rather than hardcoding which of the three anchors applies
+    // per branch) is what makes one shared helper correct for all four
+    // directions without duplicating that per-mode logic four times.
+    function resetViewToNewNode(newId){
+      var newNode = node(newId);
+      if(!newNode || !newNode.parentId) return;
+      var parent = node(newNode.parentId);
+      if(!parent) return;
+      parent.drilled = true;
+      state.focusId = parent.id;
+      selectedId = newId;
+      scheduleSave();
+      render();
+      resyncRootView();
+    }
+    var dirMap = {ArrowDown:'child', ArrowUp:'parent', ArrowRight:'sibling-r', ArrowLeft:'sibling-l'};
     if(dirMap[e.key]){
       e.preventDefault();
       var m = dirMap[e.key];
-      if(m==='wrapChild') openInsertDialog({mode:'wrapChild', anchorId:cur.id});
-      else if(m==='parent') openInsertDialog({mode:'parent', anchorId:cur.id});
-      else if(m==='sibling-r') openInsertDialog({mode:'sibling', anchorId:cur.id, dir:1});
-      else if(m==='sibling-l') openInsertDialog({mode:'sibling', anchorId:cur.id, dir:-1});
+      if(m==='child') openInsertDialog({mode:'child', anchorId:cur.id, onCommit:resetViewToNewNode});
+      else if(m==='parent') openInsertDialog({mode:'parent', anchorId:cur.id, onCommit:resetViewToNewNode});
+      else if(m==='sibling-r') openInsertDialog({mode:'sibling', anchorId:cur.id, dir:1, onCommit:resetViewToNewNode});
+      else if(m==='sibling-l') openInsertDialog({mode:'sibling', anchorId:cur.id, dir:-1, onCommit:resetViewToNewNode});
       return;
     }
   }
@@ -6009,19 +6066,16 @@ function handleTreeRowKeydown(ev, id, n, hasKids, isTreeRoot){
   // canvas shortcuts below, so the same key combo means the same thing in
   // both views. Checked before the plain arrow-key handling further down
   // so ⌥ + arrow never falls through to collapse/expand/move-focus.
-  // ⌥↓ alone wraps a new sole child under the row (insertWrapChild — see its
-  // own comment); ⌥⇧↓ keeps adding ordinary batch-inserted children instead,
-  // since repeatedly wrapping on every batch submission would nest each new
-  // node one level deeper than the last, which isn't what "insert several
-  // children in a row" means.
+  // "选中节点然后opt⬇️...修改成:新建一个孩子节点,和现有的选中的节点的其他
+  // 孩子同为兄弟" — ⌥↓ now opens the SAME dialog every other single-child
+  // insert path uses (mode:'child') instead of wrapChild's "insert an
+  // intermediate node between anchor and all its EXISTING children"
+  // behavior, matching the canvas's own ⌥↓ (see dirMap above). ⌥⇧↓ already
+  // used mode:'child' (batch:true) — treeDirMap below now covers BOTH the
+  // batch and non-batch ArrowDown cases identically, so the separate
+  // non-batch wrapChild branch that used to sit here is gone entirely.
   if(ev.altKey && !ev.metaKey && !ev.ctrlKey){
     var isBatch = ev.shiftKey;
-    if(!isBatch && ev.key==='ArrowDown'){
-      ev.preventDefault();
-      ev.stopPropagation();
-      openInsertDialog({mode:'wrapChild', anchorId:id});
-      return;
-    }
     if(!isBatch && ev.key==='ArrowUp'){
       // ⌥↑ wraps a new PARENT above this row — same insertParentAbove
       // semantics as the canvas's own ⌥↑ (see dirMap above). Not part of
@@ -6827,10 +6881,21 @@ function symmetricUnitPositions(n){
   // font size) from shrinking further no matter how many nodes there
   // are in total.
   var side = Math.min(4, Math.ceil(Math.sqrt(n)));
+  var rows = Math.ceil(n/side);
   var outg = [];
   for(var k=0;k<n;k++){
     var row = Math.floor(k/side), col = k%side;
-    outg.push({x:col-(side-1)/2, y:row-(side-1)/2});
+    // "母节点上半部分几乎一半的面积都是空的,从中间才开始排布,并且一路排
+    // 到最底下" — the vertical center offset must be based on the ACTUAL
+    // row count (rows), not on side (the fixed column count, always 4
+    // past the 16-node cap). Centering against side instead of rows was
+    // fine only by coincidence for n<=16 (where rows<=side, e.g. a 4x4
+    // grid has rows===side===4) — once n>16 pushes rows past side (5+
+    // rows, still only 4 columns), subtracting the SAME (side-1)/2 offset
+    // for every row leaves the true vertical midpoint of the grid sitting
+    // well below row 0, so the whole block renders shifted down: empty
+    // space above, everything crammed toward the bottom edge.
+    outg.push({x:col-(side-1)/2, y:row-(rows-1)/2});
   }
   return outg;
 }
@@ -8242,12 +8307,14 @@ function renderCompactTreeView(){
       });
       row.appendChild(siblingBtn);
       // "每一排最右边...还有额外出现一个小x按钮...表示删除节点或者它对应的
-      // 子树。删除有弹窗提示" — reuses openTreeDeleteMenu as-is (the SAME
-      // 删除此节点/删除此节点及全部子树 two-option menu the tag's own
-      // long-press already opens — see its own comment), just reached via
-      // a direct tap here instead of a long-press, since 挪动 mode is
-      // already a deliberate "editing the tree structure" context where a
-      // quick tap-to-delete reads as intentional rather than accidental.
+      // 子树。删除有弹窗提示" — "tree view点击挪动然后点击x准备删除,默认
+      // 直接删除全部子树,不要再多一道二选一删除节点本身不包含子树还是要
+      // 包含子树。不过,随后的弹窗提示需要保留" — unlike the tag's own
+      // long-press menu (still offers both 删除此节点/删除此节点及全部子树
+      // options, unchanged), this × button skips straight to the
+      // subtree-delete confirm() — 挪动 mode is already a deliberate
+      // "editing the tree structure" context, and a two-option menu here
+      // was extra friction for what's meant to be a single quick action.
       // The ultimate root has no delete button at all (matches
       // openTreeDeleteMenu's own id===state.rootId guard, and every other
       // per-row action here that already treats the root specially).
@@ -8257,8 +8324,15 @@ function renderCompactTreeView(){
         deleteBtn.textContent = '×';
         deleteBtn.addEventListener('click', function(ev){
           ev.stopPropagation();
-          var r = row.getBoundingClientRect();
-          openTreeDeleteMenu(r.right, r.bottom, id);
+          var summary = richToPlain(n.summary) || '(未命名)';
+          if(!confirm('删除节点"'+summary+'"及其全部子节点？此操作可用 ⌘Z 撤销。')) return;
+          pushUndo();
+          var deletedIds = subtreeIds(id);
+          deleteSubtree(id);
+          if(treeMoveSourceId && deletedIds.indexOf(treeMoveSourceId)!==-1) treeMoveSourceId = null;
+          scheduleSave();
+          renderCompactTreeView();
+          render();
         });
         row.appendChild(deleteBtn);
       }
