@@ -2453,6 +2453,34 @@ function computeNodeBox(n, ignoreCrowd){
    diameter made its effective collision footprint huge in every direction,
    including straight up/down where the real rectangle is thin. */
 function boxRadius(w, h){ return Math.max(w, h)/2; }
+/* the shape's own half-extent measured ALONG one specific direction
+   (ux,uy must already be a unit vector) — used wherever two SPECIFIC
+   siblings' pairwise spacing is being judged, as opposed to boxRadius's
+   single isotropic "longest side / 2" figure used only for the rough,
+   one-time ring-placement estimate above. "给兄弟防碰撞机制变成xy分别
+   测量（适用于椭圆形和圆角矩形...圆形也可以自动适用）":
+     - rect (圆角矩形's corners are purely cosmetic — the actual collision
+       footprint is still the full axis-aligned bounding box): the exact
+       same "project the half-extents onto the direction of travel"
+       formula maxReachInAvail's own circle-boundary branch already uses
+       for an identical reason (see its own comment) — |ux|*halfW +
+       |uy|*halfH is the AABB's true half-width along an arbitrary
+       direction, not an over-estimate.
+     - circle/ellipse: sqrt((halfW*ux)² + (halfH*uy)²) is the exact
+       support-function value of an ellipse along direction (ux,uy) — a
+       circle is simply the special case halfW===halfH, where this
+       collapses to the constant radius automatically, needing no
+       separate branch.
+   Any OTHER/undefined shape string defensively falls through to the
+   ellipse branch (the smaller of the two for a given w/h whenever they
+   differ) rather than throwing, though every real caller's box always
+   carries one of the three shapes above (computeNodeBox/containerSize
+   never return anything else). */
+function effectiveRadiusAlong(w, h, shape, ux, uy){
+  var halfW = w/2, halfH = h/2;
+  if(shape==='rect') return Math.abs(ux)*halfW + Math.abs(uy)*halfH;
+  return Math.sqrt((halfW*ux)*(halfW*ux) + (halfH*uy)*(halfH*uy));
+}
 
 /* ============================================================
    sibling spatial layout (ring init + relax)
@@ -2563,7 +2591,7 @@ function computeCrowdScale(kids, avail){
   if(placed.length<1) return;
   var natural = placed.map(function(k){
     var b = k.drilled ? containerSize(k) : computeNodeBox(k);
-    return {node:k, w:b.w, h:b.h, r:boxRadius(b.w, b.h)};
+    return {node:k, w:b.w, h:b.h, shape:b.shape};
   });
   var s = 1;
   for(var i=0;i<natural.length;i++){
@@ -2585,9 +2613,37 @@ function computeCrowdScale(kids, avail){
       // by factor f scales avgR by f but leaves `dist` (a distance between
       // two fixed points) unchanged, so solving dist == f*targetDist for f
       // gives the exact shrink needed to land the pair on that ratio.
+      //
+      // "防碰撞机制在x和y方向上测量半径" — avgR is no longer boxRadius's
+      // single isotropic "longest side / 2" figure; it's now each box's
+      // own effectiveRadiusAlong the ACTUAL direction toward the other box
+      // (ux,uy), so a wide-but-short pair sitting side-by-side (their
+      // connecting direction is nearly horizontal) is judged by how far
+      // each one actually reaches horizontally, not by its longer edge
+      // regardless of which way that edge happens to point — the exact
+      // same "project half-extents onto the direction of travel" idea
+      // maxReachInAvail's own circle-boundary branch already uses (see
+      // its comment) and effectiveRadiusAlong's own doc comment.
+      // dist===0 (two centers exactly coincident) has no meaningful
+      // direction to project onto — ux/uy would divide by zero into NaN,
+      // which crowdScaleMap[k.id]=s at the end would then propagate onto
+      // EVERY sibling (not just this pair), collapsing every node's font
+      // to nothing in one shot. Falling back to boxRadius's own plain
+      // "longest side / 2" average for JUST this one degenerate pair
+      // matches exactly what the OLD isotropic code always computed
+      // (direction never mattered there), so this is a pure bugfix for a
+      // case the old math also had to handle, not a behavior change.
       var dx=b.node.px-a.node.px, dy=b.node.py-a.node.py;
       var dist = Math.sqrt(dx*dx+dy*dy);
-      var avgR = (a.r+b.r)/2;
+      var avgR;
+      if(dist>0){
+        var ux=dx/dist, uy=dy/dist;
+        var ra = effectiveRadiusAlong(a.w, a.h, a.shape, ux, uy);
+        var rb = effectiveRadiusAlong(b.w, b.h, b.shape, ux, uy);
+        avgR = (ra+rb)/2;
+      } else {
+        avgR = (boxRadius(a.w,a.h) + boxRadius(b.w,b.h))/2;
+      }
       var targetDist = avgR * (1 + 2*appParams.relaxStrength);
       if(targetDist>0){
         var f = dist / targetDist;
@@ -2604,7 +2660,15 @@ function layoutChildrenPositions(parentId, avail){
   computeCrowdScale(kids, avail);
   var boxes = kids.map(function(k){
     var box = k.drilled ? containerSize(k) : computeNodeBox(k);
-    return {node:k, w:box.w, h:box.h, r:boxRadius(box.w, box.h)};
+    // .r (boxRadius, isotropic "longest side / 2") stays exactly as before
+    // for THIS function's own radial-distance-from-origin estimates below
+    // (sumD/ringR/maxSettledR/placeR — none of those are pairwise
+    // direction-dependent, they're "how far from center does this ring
+    // need to reach", so boxRadius's original rough figure is still the
+    // right tool). .shape is new — relaxBoxes/relaxFreshAgainstSettled
+    // read it (alongside w/h) to compute each PAIR's own directional
+    // radius instead of reusing this same isotropic .r for that.
+    return {node:k, w:box.w, h:box.h, r:boxRadius(box.w, box.h), shape:box.shape};
   });
   var n = boxes.length;
   var freshBoxes = boxes.filter(function(b){ return !b.node.placed; });
@@ -2757,10 +2821,19 @@ function relaxBoxes(boxes, iterations, allowCentering){
         var A=boxes[i].node, B=boxes[j].node;
         var dx=B.px-A.px, dy=B.py-A.py;
         var d = Math.sqrt(dx*dx+dy*dy)||0.001;
-        var minGap = boxes[i].r + boxes[j].r + 34;
+        var ux=dx/d, uy=dy/d;
+        // "防碰撞机制在x和y方向上测量半径" — same directional-radius
+        // switch as computeCrowdScale (see its own comment); the `||0.001`
+        // fallback above already guarantees d (and therefore ux/uy) is
+        // always a well-defined, if somewhat arbitrary, direction even
+        // when two boxes start out exactly coincident, so no separate
+        // zero-distance branch is needed here the way computeCrowdScale
+        // needed one.
+        var ra = effectiveRadiusAlong(boxes[i].w, boxes[i].h, boxes[i].shape, ux, uy);
+        var rb = effectiveRadiusAlong(boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy);
+        var minGap = ra + rb + 34;
         if(d < minGap){
           var push = (minGap-d)*0.5;
-          var ux=dx/d, uy=dy/d;
           A.px -= ux*push; A.py -= uy*push;
           B.px += ux*push; B.py += uy*push;
         }
@@ -2798,23 +2871,29 @@ function relaxFreshAgainstSettled(freshBoxes, settledBoxes, iterations){
         var Fj = freshBoxes[j];
         var dx=Fj.node.px-Fi.node.px, dy=Fj.node.py-Fi.node.py;
         var d = Math.sqrt(dx*dx+dy*dy)||0.001;
-        var minGap = Fi.r + Fj.r + 34;
+        var uxa=dx/d, uya=dy/d;
+        // "防碰撞机制在x和y方向上测量半径" — same directional-radius switch
+        // as computeCrowdScale/relaxBoxes above.
+        var ra = effectiveRadiusAlong(Fi.w, Fi.h, Fi.shape, uxa, uya);
+        var rb = effectiveRadiusAlong(Fj.w, Fj.h, Fj.shape, uxa, uya);
+        var minGap = ra + rb + 34;
         if(d < minGap){
           var push = (minGap-d)*0.5;
-          var ux=dx/d, uy=dy/d;
-          Fi.node.px -= ux*push; Fi.node.py -= uy*push;
-          Fj.node.px += ux*push; Fj.node.py += uy*push;
+          Fi.node.px -= uxa*push; Fi.node.py -= uya*push;
+          Fj.node.px += uxa*push; Fj.node.py += uya*push;
           movedAny = true;
         }
       }
       settledBoxes.forEach(function(S){
         var dx=Fi.node.px-S.node.px, dy=Fi.node.py-S.node.py;
         var d = Math.sqrt(dx*dx+dy*dy)||0.001;
-        var minGap = Fi.r + S.r + 34;
+        var uxb=dx/d, uyb=dy/d;
+        var raF = effectiveRadiusAlong(Fi.w, Fi.h, Fi.shape, uxb, uyb);
+        var raS = effectiveRadiusAlong(S.w, S.h, S.shape, uxb, uyb);
+        var minGap = raF + raS + 34;
         if(d < minGap){
           var push = minGap-d;
-          var ux=dx/d, uy=dy/d;
-          Fi.node.px += ux*push; Fi.node.py += uy*push;
+          Fi.node.px += uxb*push; Fi.node.py += uyb*push;
           movedAny = true;
         }
       });
@@ -6914,7 +6993,7 @@ function symmetrizeChildrenOf(parentId){
   if(!n) return;
   var boxes = kids.map(function(k){
     var b = k.drilled ? containerSize(k) : computeNodeBox(k);
-    return {node:k, r:boxRadius(b.w, b.h)};
+    return {node:k, w:b.w, h:b.h, shape:b.shape};
   });
   var units = symmetricUnitPositions(n);
   // "节点间距应该要刚好没有触发节点防碰撞收缩机制" — reuses
@@ -6929,6 +7008,20 @@ function symmetrizeChildrenOf(parentId){
   // places every pair exactly at (never below) the same crowd-avoidance
   // threshold computeCrowdScale itself enforces, so a fresh reset can
   // never immediately re-trigger its own shrink.
+  //
+  // "防碰撞机制在x和y方向上测量半径" — avgR now uses effectiveRadiusAlong
+  // (see computeCrowdScale's own comment for the full rationale) instead
+  // of boxRadius's isotropic figure, so this stays in lockstep with what
+  // computeCrowdScale will actually measure on the very next render — the
+  // whole point of this reuse ("never immediately re-trigger" above) only
+  // holds if both sides agree on what "radius" means. The direction
+  // (ux,uy) between unit positions i/j is exactly the real-world
+  // direction those two nodes will sit at once cellSize is applied below
+  // (cellSize is a single positive scalar multiplying BOTH nodes'
+  // coordinates uniformly, so it scales distances but never rotates the
+  // direction between them) — computing it from the UNIT positions here,
+  // before cellSize is even known yet, is what lets this solve for
+  // cellSize in one pass instead of needing to guess-and-check it.
   var relaxMult = 1 + 2*appParams.relaxStrength;
   var cellSize = 0;
   for(var i=0;i<n;i++){
@@ -6936,7 +7029,10 @@ function symmetrizeChildrenOf(parentId){
       var dx=units[i].x-units[j].x, dy=units[i].y-units[j].y;
       var unitDist = Math.sqrt(dx*dx+dy*dy);
       if(unitDist<=0) continue;
-      var avgR = (boxes[i].r+boxes[j].r)/2;
+      var ux=dx/unitDist, uy=dy/unitDist;
+      var ra = effectiveRadiusAlong(boxes[i].w, boxes[i].h, boxes[i].shape, ux, uy);
+      var rb = effectiveRadiusAlong(boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy);
+      var avgR = (ra+rb)/2;
       var needed = (avgR*relaxMult)/unitDist;
       if(needed>cellSize) cellSize = needed;
     }
@@ -6945,7 +7041,7 @@ function symmetrizeChildrenOf(parentId){
   // of cellSize (symmetricUnitPositions(1) is always {x:0,y:0}), so any
   // positive fallback here is inert; kept only so cellSize is never 0/NaN.
   if(!isFinite(cellSize) || cellSize<=0){
-    cellSize = Math.max.apply(null, boxes.map(function(b){ return b.r*2; })) || 1;
+    cellSize = Math.max.apply(null, boxes.map(function(b){ return boxRadius(b.w,b.h)*2; })) || 1;
   }
   boxes.forEach(function(b, i){
     b.node.px = units[i].x*cellSize;
@@ -7573,22 +7669,33 @@ var compactDragConsumed = false;
 var cbDragToggleEl = document.getElementById('cbDragToggle');
 // "再在红色之后再加一个,按下以后,🖐️变成🫥,作用是改变随机选一的功能" — the
 // 6th cycle state is NOT another arrow-repurposing mode like fast/mid/
-// slow/scroll (⬆️⬇️⬅️➡️ are untouched while this is active) — entering it
-// is itself the action: flips the SAME global appParams.onlyEmptyBNodes
-// flag desktop's own 布局参数 "仅空B" button also controls (see
-// randomButtonScopeBNodes), and the button's own glyph swaps ✋→🫥 for as
-// long as this state is active so its state is visible without reading
-// the tooltip. Leaving this state (advancing to 'off' on the next tap)
-// does NOT revert onlyEmptyBNodes — it's a persisted global setting, not
-// a transient arm/disarm like the move-speeds are; unset it again the
-// same way (advance back to this state) to flip it back off.
+// slow/scroll (⬆️⬇️⬅️➡️ are untouched while this is active) — the button
+// glyph swaps ✋→🫥 for as long as this state is active so its state is
+// visible without reading the tooltip.
+//
+// "正确的逻辑是,只要🖐️按钮没有显示为🫥,就全都表示仅非空B,只有当🖐️按钮
+// 显示为🫥的那一个状态,才能是空B...根据🫥直接决定状态,而不是根据🫥来切换
+// 状态" — appParams.onlyEmptyBNodes must be a pure FUNCTION of
+// compactDragMode (true iff compactDragMode==='onlyEmptyB', false in
+// every other state), never a persisted flag that gets flipped on ENTRY
+// to this state. The earlier version toggled it once per entry, so the
+// flag's value depended on how many times 🫥 had been landed on before —
+// exactly the "循环按🖐️...每次出现🫥...功能就跳变一次" symptom, where the
+// meaning of 🫥 silently alternated between "仅空B" and "仅非空B" across
+// separate activations instead of always meaning the same thing. Setting
+// it unconditionally on every single 🖐️ tap (not just the ones landing on
+// 'onlyEmptyB') is what makes desktop's own "仅空B" button (which can be
+// toggled independently while 手机精致模式 is active, e.g. via the shared
+// appParams state) get immediately overridden back to the correct value
+// derived from compactDragMode the next time this button is pressed,
+// rather than the two surfaces' toggles fighting each other.
 function refreshCbDragToggleUI(){
   cbDragToggleEl.classList.remove('active', 'cbdrag-mid', 'cbdrag-fast', 'cbdrag-slow', 'cbdrag-scroll');
   if(compactDragMode!=='off' && compactDragMode!=='onlyEmptyB') cbDragToggleEl.classList.add('cbdrag-'+compactDragMode);
   cbDragToggleEl.textContent = compactDragMode==='onlyEmptyB' ? '🫥' : '✋';
   cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：快速→中速→慢速→滚动→仅空B）'
     : compactDragMode==='scroll' ? '屏幕滚动中（红色）：⬆️⬇️⬅️➡️滚动可见子节点区域（横向排版时⬅️➡️才有效）；点击关闭'
-    : compactDragMode==='onlyEmptyB' ? ('随机选一范围：'+(appParams.onlyEmptyBNodes ? '仅无孩子且无detail的B节点' : '仅有孩子或有detail的B节点')+'（与电脑版"仅空B"共用同一开关）；点击关闭')
+    : compactDragMode==='onlyEmptyB' ? '随机选一范围：仅无孩子且无detail的B节点（与电脑版"仅空B"共用同一开关）；点击关闭'
     : '拖拽平移中（'+({mid:'中速', fast:'快速', slow:'慢速'})[compactDragMode]+'）：点击切换下一速度，或移动一次节点后再点击关闭';
 }
 cbDragToggleEl.addEventListener('click', function(){
@@ -7601,11 +7708,12 @@ cbDragToggleEl.addEventListener('click', function(){
     compactDragMode = COMPACT_DRAG_SPEEDS[(idx+1) % COMPACT_DRAG_SPEEDS.length];
   }
   compactDragConsumed = false;
-  // entering 'onlyEmptyB' (never leaving it) is what actually flips the
-  // flag — "按下以后...作用是改变随机选一的功能" describes a single tap
-  // toggling it, not a held/armed state.
-  if(compactDragMode==='onlyEmptyB'){
-    appParams.onlyEmptyBNodes = !appParams.onlyEmptyBNodes;
+  // derive the flag from the new state EVERY tap (not just the ones that
+  // just entered/left 'onlyEmptyB') — see this function's own top comment
+  // for why this must be a derivation, not a toggle.
+  var wantOnlyEmpty = (compactDragMode==='onlyEmptyB');
+  if(appParams.onlyEmptyBNodes !== wantOnlyEmpty){
+    appParams.onlyEmptyBNodes = wantOnlyEmpty;
     saveParams();
     if(typeof refreshParamsUI==='function') refreshParamsUI();
     render();
@@ -7673,17 +7781,38 @@ cbNavUpEl.addEventListener('click', function(){
 cbNavDownEl.addEventListener('click', function(){
   if(compactDragMode==='scroll'){ compactScrollView(0, 1); return; }
   if(compactDragMode!=='off'){ compactMoveSelected(0, 1); return; }
-  // pops compactNavStack and returns to whatever node ⬆️ most recently
-  // left — skipping (not crashing on) any popped id whose node has since
-  // been deleted, so a single stale entry can't wedge every ⬇️ press
-  // after it.
+  // "按⬇️的时候需要强制在当前可见的一级小孩里面选择,仅当之前按过⬆️,留下
+  // 过历史记录,且匹配上了当前的小孩,才会优先选择曾经看过记录的,否则当前
+  // 小孩都不在历史记录里面,就随便选一个深入" — compactNavStack's old
+  // "just pop and jump" logic never checked WHOSE child the popped id
+  // actually was: pressing ⬅️/➡️ after ⬆️ moves focus to a SIBLING of the
+  // node ⬆️ was pressed from (not a descendant of the current root), so
+  // the stack could still be holding an id belonging to a completely
+  // different subtree — popping it then jumped straight into "someone
+  // else's child" instead of the current root's own. The current root's
+  // own direct children (kids below) are now the ONLY valid destinations;
+  // the stack is only ever consulted to break a TIE among those, never to
+  // override them.
+  var kids = children(state.focusId);
+  if(!kids.length) return;
   var target = null;
+  // walk the stack top-down (most recent ⬆️ first) looking for the first
+  // entry that is ACTUALLY one of the current root's own direct children —
+  // "仅当...匹配上了当前的小孩,才会优先选择". Entries popped past a
+  // non-matching one are simply discarded (same "a stale/deleted entry
+  // can't wedge every future ⬇️" guarantee the old code already had,
+  // just now ALSO discarding entries that point outside the current
+  // root's own children instead of only checking node() existence).
   while(compactNavStack.length){
     var id = compactNavStack.pop();
     var n = node(id);
-    if(n){ target = n; break; }
+    if(n && n.parentId===state.focusId){ target = n; break; }
   }
-  if(!target) return;
+  // no matching history — "随便选一个深入": the current root's own first
+  // direct child, deterministic rather than truly random so repeated ⬇️
+  // presses (with nothing in between) land on the same node instead of
+  // jittering around.
+  if(!target) target = kids[0];
   pushUndo();
   target.drilled = true;
   state.focusId = target.id;
