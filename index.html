@@ -2547,30 +2547,44 @@ function boxRadius(w, h){ return Math.max(w, h)/2; }
    approach applied to a circle-circle pair at 45°: treating a circle as its
    own bounding square there would introduce a NEW ~41% over-estimate at the
    diagonal that does not exist in this per-box formula, so circle/ellipse
-   pairs deliberately keep using this instead of pairAvgRadius's rect-sum
+   pairs deliberately keep using this instead of pairSumRadius's rect-sum
    shortcut below. */
 function effectiveRadiusAlong(w, h, shape, ux, uy){
   var halfW = w/2, halfH = h/2;
   if(shape==='rect') return Math.abs(ux)*halfW + Math.abs(uy)*halfH;
   return Math.sqrt((halfW*ux)*(halfW*ux) + (halfH*uy)*(halfH*uy));
 }
-/* PAIRWISE "average radius" for two sibling boxes along the direction
-   (ux,uy) between their centers (must already be a unit vector).
+/* PAIRWISE "combined radius" (SUM, not averaged) for two sibling boxes
+   along the direction (ux,uy) between their centers (must already be a
+   unit vector) — callers that need an AVERAGE (computeCrowdScale,
+   symmetrizeChildrenOf) divide this by 2 themselves; callers that need a
+   minimum SEPARATION distance (relaxBoxes, relaxFreshAgainstSettled) use
+   it directly as minGap, unhalved. Mixing those two call sites under a
+   single "/2 baked in" helper was an earlier version of this function's
+   own bug: relaxBoxes/relaxFreshAgainstSettled's old code always used
+   `ra + rb` (the unhalved SUM) as minGap, but that earlier pairAvgRadius
+   silently returned the HALVED average instead — every relax-based
+   settle pass was then enforcing only HALF the intended minimum gap,
+   letting siblings sit far closer than intended (worst around ~50% too
+   close for same-sized boxes) regardless of direction, which is a much
+   bigger and more confusing symptom than the diagonal-only over-estimate
+   this whole rewrite was meant to fix in the first place — "改了还是有"
+   was this, not the original rect-diagonal issue.
    rect-vs-rect ONLY: two AABBs' Minkowski sum is EXACTLY another AABB
    (halfW=halfWA+halfWB, halfH=halfHA+halfHB), and the true distance to
    THAT combined AABB's boundary along (ux,uy) is min(halfWsum/|ux|,
-   halfHsum/|uy|) — whichever edge gets hit first. This is an EXACT (not
-   approximate) replacement for the old "effectiveRadiusAlong(A) +
-   effectiveRadiusAlong(B), averaged" two-step approach for this one case:
-   that two-step version measured each rect's OWN support-function value
-   (widest projection onto the direction) independently, which is only
-   exact ON the x/y axes — off-axis it systematically over-estimates,
-   producing the reported "距离的等高线不是矩形/圆角矩形/椭圆,反而是一个
-   类似双曲线的形状,朝着四个斜45度角有比较明显的突出" symptom for
-   rect-vs-rect pairs specifically. Dividing the combined touch-distance by
-   2 reproduces the OLD (ra+rb)/2 average exactly ON the x/y axes (ra+rb
-   there was already exactly halfWA+halfWB or halfHA+halfHB depending on
-   axis), so on-axis behavior is provably unchanged — only the diagonal
+   halfHsum/|uy|) — whichever edge gets hit first. This IS the combined
+   (summed) radius already — no separate "add ra+rb" step needed, unlike
+   the old effectiveRadiusAlong(A)+effectiveRadiusAlong(B) two-step
+   approach this replaces for rect-rect pairs, which measured each rect's
+   OWN support-function value (widest projection onto the direction)
+   independently and is only exact ON the x/y axes — off-axis it
+   systematically over-estimates, producing the reported "距离的等高线
+   不是矩形/圆角矩形/椭圆,反而是一个类似双曲线的形状,朝着四个斜45度角有
+   比较明显的突出" symptom for rect-vs-rect pairs specifically. This exact
+   sum reproduces the OLD ra+rb sum precisely ON the x/y axes (ra+rb there
+   was already exactly halfWA+halfWB or halfHA+halfHB depending on axis),
+   so on-axis behavior is provably unchanged — only the diagonal
    over-estimate is corrected.
    ANY pairing involving a circle/ellipse (either box's shape !== 'rect')
    falls back to the OLD per-box effectiveRadiusAlong sum instead — a
@@ -2583,17 +2597,15 @@ function effectiveRadiusAlong(w, h, shape, ux, uy){
    further, not correcting anything) — "椭圆全都是横竖方向的,没有倾斜的"
    is true, but this file has no elliptical Minkowski-sum closed form, so
    this stays scoped to the one case (rect-rect) where an exact fix exists. */
-function pairAvgRadius(wA, hA, shapeA, wB, hB, shapeB, ux, uy){
+function pairSumRadius(wA, hA, shapeA, wB, hB, shapeB, ux, uy){
   if(shapeA==='rect' && shapeB==='rect'){
     var halfWSum = wA/2 + wB/2, halfHSum = hA/2 + hB/2;
     var ax = Math.abs(ux), ay = Math.abs(uy);
-    var touchDist;
-    if(ax<=0) touchDist = halfHSum/ay;
-    else if(ay<=0) touchDist = halfWSum/ax;
-    else touchDist = Math.min(halfWSum/ax, halfHSum/ay);
-    return touchDist/2;
+    if(ax<=0) return halfHSum/ay;
+    if(ay<=0) return halfWSum/ax;
+    return Math.min(halfWSum/ax, halfHSum/ay);
   }
-  return (effectiveRadiusAlong(wA, hA, shapeA, ux, uy) + effectiveRadiusAlong(wB, hB, shapeB, ux, uy)) / 2;
+  return effectiveRadiusAlong(wA, hA, shapeA, ux, uy) + effectiveRadiusAlong(wB, hB, shapeB, ux, uy);
 }
 
 /* ============================================================
@@ -2729,9 +2741,11 @@ function computeCrowdScale(kids, avail){
       // gives the exact shrink needed to land the pair on that ratio.
       //
       // "防碰撞机制在x和y方向上测量半径" — avgR is no longer boxRadius's
-      // single isotropic "longest side / 2" figure; it's now pairAvgRadius's
-      // EXACT combined-AABB touch-distance along the ACTUAL direction
-      // toward the other box (ux,uy) — see pairAvgRadius's own doc comment
+      // single isotropic "longest side / 2" figure; it's now pairSumRadius's
+      // EXACT combined-AABB touch-distance (halved to an average here,
+      // matching this function's own historical (ra+rb)/2 convention)
+      // along the ACTUAL direction toward the other box (ux,uy) — see
+      // pairSumRadius's own doc comment
       // for why summing the two boxes' half-extents FIRST (rather than
       // each box's own directional reach, summed after) is what keeps this
       // exact off-axis too, not just on the x/y axes.
@@ -2749,7 +2763,7 @@ function computeCrowdScale(kids, avail){
       var avgR;
       if(dist>0){
         var ux=dx/dist, uy=dy/dist;
-        avgR = pairAvgRadius(a.w, a.h, a.shape, b.w, b.h, b.shape, ux, uy);
+        avgR = pairSumRadius(a.w, a.h, a.shape, b.w, b.h, b.shape, ux, uy) / 2;
       } else {
         avgR = (boxRadius(a.w,a.h) + boxRadius(b.w,b.h))/2;
       }
@@ -2938,7 +2952,7 @@ function relaxBoxes(boxes, iterations, allowCentering){
         // when two boxes start out exactly coincident, so no separate
         // zero-distance branch is needed here the way computeCrowdScale
         // needed one.
-        var minGap = pairAvgRadius(boxes[i].w, boxes[i].h, boxes[i].shape, boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy) + 34;
+        var minGap = pairSumRadius(boxes[i].w, boxes[i].h, boxes[i].shape, boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy) + 34;
         if(d < minGap){
           var push = (minGap-d)*0.5;
           A.px -= ux*push; A.py -= uy*push;
@@ -2981,7 +2995,7 @@ function relaxFreshAgainstSettled(freshBoxes, settledBoxes, iterations){
         var uxa=dx/d, uya=dy/d;
         // "防碰撞机制在x和y方向上测量半径" — same directional-radius switch
         // as computeCrowdScale/relaxBoxes above.
-        var minGap = pairAvgRadius(Fi.w, Fi.h, Fi.shape, Fj.w, Fj.h, Fj.shape, uxa, uya) + 34;
+        var minGap = pairSumRadius(Fi.w, Fi.h, Fi.shape, Fj.w, Fj.h, Fj.shape, uxa, uya) + 34;
         if(d < minGap){
           var push = (minGap-d)*0.5;
           Fi.node.px -= uxa*push; Fi.node.py -= uya*push;
@@ -2993,7 +3007,7 @@ function relaxFreshAgainstSettled(freshBoxes, settledBoxes, iterations){
         var dx=Fi.node.px-S.node.px, dy=Fi.node.py-S.node.py;
         var d = Math.sqrt(dx*dx+dy*dy)||0.001;
         var uxb=dx/d, uyb=dy/d;
-        var minGap = pairAvgRadius(Fi.w, Fi.h, Fi.shape, S.w, S.h, S.shape, uxb, uyb) + 34;
+        var minGap = pairSumRadius(Fi.w, Fi.h, Fi.shape, S.w, S.h, S.shape, uxb, uyb) + 34;
         if(d < minGap){
           var push = minGap-d;
           Fi.node.px += uxb*push; Fi.node.py += uyb*push;
@@ -7161,7 +7175,7 @@ function symmetrizeChildrenOf(parentId){
   // threshold computeCrowdScale itself enforces, so a fresh reset can
   // never immediately re-trigger its own shrink.
   //
-  // "防碰撞机制在x和y方向上测量半径" — avgR now uses pairAvgRadius
+  // "防碰撞机制在x和y方向上测量半径" — avgR now uses pairSumRadius (halved)
   // (see computeCrowdScale's own comment for the full rationale) instead
   // of boxRadius's isotropic figure, so this stays in lockstep with what
   // computeCrowdScale will actually measure on the very next render — the
@@ -7182,7 +7196,7 @@ function symmetrizeChildrenOf(parentId){
       var unitDist = Math.sqrt(dx*dx+dy*dy);
       if(unitDist<=0) continue;
       var ux=dx/unitDist, uy=dy/unitDist;
-      var avgR = pairAvgRadius(boxes[i].w, boxes[i].h, boxes[i].shape, boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy);
+      var avgR = pairSumRadius(boxes[i].w, boxes[i].h, boxes[i].shape, boxes[j].w, boxes[j].h, boxes[j].shape, ux, uy) / 2;
       var needed = (avgR*relaxMult)/unitDist;
       if(needed>cellSize) cellSize = needed;
     }
