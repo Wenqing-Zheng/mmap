@@ -1057,9 +1057,21 @@
      node here without also dragging its whole flyout positioning along. */
   #compactBarRow8{padding-top:clamp(3px,1vw,6px);}
   #compactFormulaWrap{position:relative;width:100%;}
+  /* font-size must stay >=16px in every actual pixel value (not a clamp()
+     that can shrink below 16px on a narrow phone) — iOS Safari auto-zooms
+     the whole page whenever a focused input/textarea's computed font-size
+     is under 16px, and that native zoom is NOT this app's own CSS
+     transform system, so nothing here ever un-does it: the OFF-SCREEN
+     #searchFlyout (parked below the viewport via transform:translateY
+     (100%), not display:none, so its own leftover query/results survive
+     invisibly) gets dragged onto screen by the same native zoom/scroll,
+     with no JS state change (no .open class) for any of our own
+     close-panel code to react to — "无法关闭只能刷新页面". Exactly the
+     same fix already applied to #insertSummary/#insertDetail for this
+     same reason — see html.mobile-compact-mode #insertSummary's own rule. */
   #compactFormulaInput{
     width:100%;border:1px solid var(--panel-border);border-radius:8px;background:var(--bg);color:var(--text-main);
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:clamp(11px,2.8vw,13px);padding:8px;resize:vertical;outline:none;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:16px;padding:8px;resize:vertical;outline:none;
     box-sizing:border-box;
   }
   #compactFormulaInput:focus{border-color:var(--accent);}
@@ -2122,6 +2134,11 @@ function activateRandomButton(btn){
   var pick = pickRandomBNode(btn);
   if(!pick) return;
   pushUndo();
+  // "任何跳转功能(...随机选一)都会立即使得🖐️变回默认状态" — a random-pick
+  // jump leaves whatever context 🖐️'s current speed/scroll/仅空B state
+  // applied to, so it must not silently keep armed. No-op while already
+  // 'off'. Defined further below (hoisted function declaration).
+  if(typeof resetCompactDragModeIfActive==='function') resetCompactDragModeIfActive();
   pick.drilled = true;
   state.focusId = pick.id;
   selectedId = null;
@@ -5948,6 +5965,10 @@ function highlight(text, q){
 }
 var searchActiveIdx = -1;
 function commitSearchResult(n){
+  // "任何跳转功能(搜索...)都会立即使得🖐️变回默认状态" — same reset as
+  // activateRandomButton's own call (see resetCompactDragModeIfActive's
+  // doc comment).
+  if(typeof resetCompactDragModeIfActive==='function') resetCompactDragModeIfActive();
   // the picked result becomes the visible-area ROOT itself
   // (state.focusId = n.id), NOT a first-level child under its own parent —
   // same fix as tree view's own Enter handler (see handleTreeRowKeydown):
@@ -7886,6 +7907,29 @@ cbDragToggleEl.addEventListener('click', function(){
   refreshCbDragToggleUI();
 });
 refreshCbDragToggleUI();
+/* "🖐️按钮只要没有在默认状态(蓝色,红色,🫥),任何跳转功能(搜索,treeview,
+   新建,随机选一)都会立即使得它变回默认状态,而不是继续维持" — every jump
+   entry point in 手机精致模式 (activateRandomButton/commitSearchResult/
+   the tree-view tag's own jump handler/cbAddToInbox's onCommit) calls this
+   right before changing state.focusId. 'off' is the one state this is a
+   no-op for (nothing to reset), matching "只要没有在默认状态" — 'off'
+   IS the default state, so a jump landing while 🖐️ was already off must
+   never touch it. Every other state (fast/mid/slow/scroll/onlyEmptyB) is
+   forced back to 'off' unconditionally, regardless of compactDragConsumed
+   — a jump is not "one more arrow press", it's leaving the whole context
+   that speed/scroll/onlyEmptyB applied to. */
+function resetCompactDragModeIfActive(){
+  if(compactDragMode==='off') return;
+  compactDragMode = 'off';
+  compactDragConsumed = false;
+  var wantOnlyEmpty = false;
+  if(appParams.onlyEmptyBNodes !== wantOnlyEmpty){
+    appParams.onlyEmptyBNodes = wantOnlyEmpty;
+    saveParams();
+    if(typeof refreshParamsUI==='function') refreshParamsUI();
+  }
+  refreshCbDragToggleUI();
+}
 // shared by all four arrow buttons while move-mode is armed: nudges
 // currentSelectedNode() by (dx,dy) unit-scaled by COMPACT_MOVE_STEP times
 // the current speed's multiplier. Only a direct child of the current
@@ -7946,6 +7990,16 @@ cbNavUpEl.addEventListener('click', function(){
 cbNavDownEl.addEventListener('click', function(){
   if(compactDragMode==='scroll'){ compactScrollView(0, 1); return; }
   if(compactDragMode!=='off'){ compactMoveSelected(0, 1); return; }
+  // "一旦触摸或某个一级子节点聚焦了它,再按⬇️,应该要更新当前首选目标为聚焦
+  // 的一级节点,也就是进入它本身(和🟧功能一样),而不是仍然试图寻找前一次
+  // 进入过的" — a node the user just tapped/selected (selectedId) takes
+  // ABSOLUTE priority over the ⬆️ history stack below whenever it's a
+  // direct child of the current root: the whole point of tapping a
+  // sibling before pressing ⬇️ is to go INTO that specific one next, not
+  // whatever ⬆️ happened to remember from before. Only falls through to
+  // the stack-consult logic when nothing selected currently qualifies.
+  var selectedChild = node(selectedId);
+  var target = (selectedChild && selectedChild.parentId===state.focusId) ? selectedChild : null;
   // "按⬇️的时候需要强制在当前可见的一级小孩里面选择,仅当之前按过⬆️,留下
   // 过历史记录,且匹配上了当前的小孩,才会优先选择曾经看过记录的,否则当前
   // 小孩都不在历史记录里面,就随便选一个深入" — compactNavStack's old
@@ -7960,18 +8014,19 @@ cbNavDownEl.addEventListener('click', function(){
   // override them.
   var kids = children(state.focusId);
   if(!kids.length) return;
-  var target = null;
-  // walk the stack top-down (most recent ⬆️ first) looking for the first
-  // entry that is ACTUALLY one of the current root's own direct children —
-  // "仅当...匹配上了当前的小孩,才会优先选择". Entries popped past a
-  // non-matching one are simply discarded (same "a stale/deleted entry
-  // can't wedge every future ⬇️" guarantee the old code already had,
-  // just now ALSO discarding entries that point outside the current
-  // root's own children instead of only checking node() existence).
-  while(compactNavStack.length){
-    var id = compactNavStack.pop();
-    var n = node(id);
-    if(n && n.parentId===state.focusId){ target = n; break; }
+  if(!target){
+    // walk the stack top-down (most recent ⬆️ first) looking for the first
+    // entry that is ACTUALLY one of the current root's own direct children —
+    // "仅当...匹配上了当前的小孩,才会优先选择". Entries popped past a
+    // non-matching one are simply discarded (same "a stale/deleted entry
+    // can't wedge every future ⬇️" guarantee the old code already had,
+    // just now ALSO discarding entries that point outside the current
+    // root's own children instead of only checking node() existence).
+    while(compactNavStack.length){
+      var id = compactNavStack.pop();
+      var n = node(id);
+      if(n && n.parentId===state.focusId){ target = n; break; }
+    }
   }
   // no matching history — "随便选一个深入": the current root's own first
   // direct child, deterministic rather than truly random so repeated ⬇️
@@ -8047,6 +8102,9 @@ document.getElementById('cbAddToInbox').addEventListener('click', function(){
     scheduleSave(); render();
   }
   openInsertDialog({mode:'child', anchorId:inbox.id, onCommit:function(){
+    // "任何跳转功能(...新建...)都会立即使得🖐️变回默认状态" — same reset
+    // as activateRandomButton's own call.
+    if(typeof resetCompactDragModeIfActive==='function') resetCompactDragModeIfActive();
     inbox.drilled = true;
     state.focusId = inbox.id;
     selectedId = null;
@@ -8551,6 +8609,9 @@ function renderCompactTreeView(){
       // desktop/手机原始模式's own tree view, which intentionally shows
       // the clicked node as a first-level child of its parent instead) —
       // "选择的按钮应该是全局根节点位置,而不是现在的一级节点位置".
+      // "任何跳转功能(...treeview...)都会立即使得🖐️变回默认状态" — same
+      // reset as activateRandomButton's own call.
+      if(typeof resetCompactDragModeIfActive==='function') resetCompactDragModeIfActive();
       pushUndo();
       n.drilled = true;
       state.focusId = id;
