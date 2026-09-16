@@ -773,9 +773,24 @@
     left:0;right:0;top:auto;bottom:0;width:100%;height:56vh;max-height:56vh;
     border-right:none;border-top:1px solid var(--panel-border);border-radius:14px 14px 0 0;
     transform:translateY(100%);z-index:850;
+    /* "新建新节点,编辑sum/detail...再确定以后,屏幕最底下又会出来搜索框,且
+       无法关闭无法激活,只能刷新页面" — visibility:hidden is a HARD,
+       browser-enforced guarantee this panel can never be seen or
+       interacted with while closed, regardless of WHAT pushes it back
+       into the visual viewport (iOS's keyboard-avoidance scroll on a
+       long multi-line contenteditable detail field, a visualViewport
+       resize, or anything else neither this file nor its own
+       window-scroll listener elsewhere happens to catch) — unlike
+       transform:translateY(100%) alone, which only repositions the
+       element and says nothing about whether some OTHER viewport shift
+       could make that repositioned box visible anyway. visibility (unlike
+       display:none) keeps the .16s transform transition working exactly
+       as before once .open is added back. */
+    visibility:hidden;
   }
   html.mobile-compact-mode #searchFlyout.open{
     transform:translateY(0);
+    visibility:visible;
   }
   html.mobile-compact-mode #app{flex-direction:column;}
   html.mobile-compact-mode #canvasWrap{order:1;flex:1;position:relative;touch-action:none;}
@@ -1034,7 +1049,11 @@
      加到下方拖拽区域的第一排,这样第一排有3+2+1=6个按钮". flex-wrap lets
      6 buttons wrap to a second visual line on very narrow phones without
      needing a separate row8/row9 — same clamp()-based sizing as every
-     other .compact-btn keeps them square regardless of wrap. */
+     other .compact-btn keeps them square regardless of wrap.
+     "新按钮↩️该到底部可拖拽拉起的按钮区域的最右边一个,和其他按钮等距排列"
+     — ⭕️/🌈's own dedicated undo (see resetRandomUndoStack) is appended as
+     this row's 7th and last button; the existing plain flex+gap layout
+     already spaces every button evenly with no extra rule needed. */
   #compactBarRow4{flex-wrap:wrap;}
   #compactBarRow4, #compactBarRow7{
     display:flex;align-items:center;gap:clamp(6px,2vw,10px);
@@ -1095,8 +1114,13 @@
     border-top:1px solid var(--panel-border);border-radius:14px 14px 0 0;
     box-shadow:var(--shadow);z-index:900;transform:translateY(100%);
     transition:transform .18s ease;
+    /* same visibility:hidden hardening as #searchFlyout's own rule above,
+       for the identical reason — this sheet parks off-screen the same way
+       (transform, not display:none) so it's equally exposed to whatever
+       viewport shift caused "屏幕最底下又会出来搜索框". */
+    visibility:hidden;
   }
-  html.mobile-compact-mode #compactTreeSheet.open{transform:translateY(0);}
+  html.mobile-compact-mode #compactTreeSheet.open{transform:translateY(0);visibility:visible;}
   #compactTreeHead{
     display:flex;align-items:center;gap:8px;flex-shrink:0;
     padding:clamp(10px,3vw,14px);font-size:clamp(12px,3vw,14px);font-weight:700;
@@ -1336,6 +1360,7 @@
         <button class="compact-btn" id="cbMoreDesktop" title="返回电脑模式">🖥</button>
         <button class="compact-btn" id="cbMoreRaw" title="手机原始模式">📱</button>
         <button class="compact-btn" id="cbMoreFit" title="回到全局">⛩</button>
+        <button class="compact-btn" id="cbResetRandomUndo" title="撤销最近一次⭕️或🌈操作（只影响这两个按钮，不影响其他任何操作）">↩️</button>
       </div>
       <div id="compactBarRow7">
         <span id="cbLockHFitLabel">锁定水平适配屏幕</span>
@@ -1959,6 +1984,34 @@ function undo(){
   scheduleSave();
   if(typeof treeFlyout!=='undefined' && treeFlyout && treeFlyout.classList.contains('open')) renderTreeView();
   render();
+}
+/* "⭕️和🌈按钮手机端都需要弹窗确认了再执行" — replaced (per follow-up) by
+   a SEPARATE, smaller undo stack scoped ONLY to these two buttons —
+   "撤回,取消掉最后一次或者若干次的⭕️和/或🌈操作。别的操作不取消" — every
+   OTHER action in this app still goes through the main ⌘Z undoStack
+   above unaffected; this one exists purely so repeated ⭕️/🌈 taps (which
+   already skip confirm() for a snappy, low-friction feel) can be walked
+   back individually without also undoing unrelated edits made in
+   between two ⭕️/🌈 presses — the main undoStack is LIFO over EVERYTHING,
+   so a single ⌘Z there would undo whatever the user did most recently,
+   not necessarily the ⭕️/🌈 press they actually want reversed. */
+var resetRandomUndoStack = [], RESET_RANDOM_MAX_UNDO = 20;
+function pushResetRandomUndo(){
+  try{
+    resetRandomUndoStack.push(JSON.stringify({nodes:state.nodes, rootId:state.rootId}));
+    if(resetRandomUndoStack.length>RESET_RANDOM_MAX_UNDO) resetRandomUndoStack.shift();
+  }catch(e){}
+}
+function undoResetRandom(){
+  if(!resetRandomUndoStack.length) return;
+  var snap = JSON.parse(resetRandomUndoStack.pop());
+  state.nodes = snap.nodes;
+  state.rootId = snap.rootId;
+  if(!state.nodes[state.focusId]) state.focusId = state.rootId;
+  if(selectedId && !state.nodes[selectedId]) selectedId = state.focusId;
+  scheduleSave();
+  render();
+  resyncRootView();
 }
 
 /* ============================================================
@@ -4584,6 +4637,18 @@ function compactNodeMousedown(ev, el, n){
   function clearLongPress(){ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; } }
   longPressTimer = setTimeout(function(){
     longPressFired = true;
+    // "如果长按了一个节点触发了编辑窗,无论有没有进行修改,都要算作聚焦了,
+    // 需要更新即将展开的一级孩子的首选" — cbNavDownEl/cbMakeRoot's own
+    // "优先进入当前选中的一级子节点" logic (see their own click handlers)
+    // reads selectedId, which until now only ever got set by an actual TAP
+    // (compactCycleNodeVis) — a long-press straight into the edit dialog
+    // never touched it, so opening the dialog and just looking (or editing
+    // and confirming) left ⬇️/🟧 still targeting whatever was selected
+    // BEFORE this long-press, not the node the user just spent time in.
+    // Setting it unconditionally here — before the dialog even opens, so
+    // it's already in effect regardless of whether the user commits or
+    // cancels — makes "长按=聚焦" hold every time, matching a plain tap.
+    selectedId = n.id;
     openInsertDialog({mode:'edit', node:n});
   }, LONG_PRESS_MS);
 
@@ -7283,6 +7348,7 @@ document.getElementById('btnResetVisibleSizes').addEventListener('click', functi
   // root's own (currently invisible) ancestors. No confirmation dialog —
   // scope is strictly local, same as before.
   pushUndo();
+  pushResetRandomUndo(); // "撤回...⭕️和/或🌈操作" — see its own doc comment
   var focusId = state.focusId;
   var kidIds = children(focusId).map(function(k){ return k.id; });
   resetNodeSizes([focusId].concat(kidIds));
@@ -7334,6 +7400,7 @@ document.getElementById('btnResetVisibleSizes').addEventListener('click', functi
    scaleXNoKids/scaleYNoKids/scaleXKids/scaleYKids are never touched. */
 function randomizeVisibleChildrenStyle(){
   pushUndo();
+  pushResetRandomUndo(); // "撤回...⭕️和/或🌈操作" — see its own doc comment
   var kids = children(state.focusId);
   if(!kids.length) return;
   kids.forEach(function(k){
@@ -8259,6 +8326,7 @@ document.getElementById('cbCenterVisibleChildren').addEventListener('click', fun
 });
 document.getElementById('cbResetVisibleSizes').addEventListener('click', function(){ document.getElementById('btnResetVisibleSizes').click(); });
 document.getElementById('cbRandomizeVisibleStyle').addEventListener('click', randomizeVisibleChildrenStyle);
+document.getElementById('cbResetRandomUndo').addEventListener('click', undoResetRandom);
 document.getElementById('cbMoreDesktop').addEventListener('click', function(){
   appParams.uiMode = 'desktop'; applyUiMode('desktop'); saveParams();
 });
@@ -8898,6 +8966,34 @@ render();
 var globalRandomBtn = (state.randomButtons||[]).filter(function(b){ return b.isGlobal; })[0];
 if(globalRandomBtn) activateRandomButton(globalRandomBtn);
 closeAllRailPanels();
+
+/* "拖拽出来最底下的公式编辑框,单击编辑,就会在编辑框下面进一步弹出搜索框
+   且无法关闭也无法触发搜索,只能刷新网页" — this app has NO legitimate
+   page-level scroll anywhere (every scrollable area is its own explicit
+   overflow:auto container — #searchResults/#treeList/#compactTreeList/
+   etc), so window.scrollX/scrollY should always read 0. #compactFormulaInput
+   sits near the very bottom of the screen inside the drag-up expand area;
+   focusing it to type pops the virtual keyboard, and iOS Safari's OWN
+   native "scroll the focused field above the keyboard" behavior scrolls
+   the WHOLE PAGE's root scroller — a real window-level scroll that
+   html,body{overflow:hidden} cannot prevent (that CSS only blocks user
+   swipe/wheel scrolling, not this programmatic keyboard-avoidance one).
+   #searchFlyout is parked off-screen via transform:translateY(100%) —
+   present in the DOM the whole time, never display:none — so scrolling
+   the page down by any amount slides that whole off-screen panel (and
+   its leftover query/results from last time) back into view from BELOW,
+   with none of this app's own .open-class state changing to match —
+   exactly "无法关闭": closeAllRailPanels() has nothing to undo, and the
+   panel's own `inert` (set by registerRailPanel since it was never
+   actually opened) blocks every click/focus inside it, matching "无法
+   触发搜索" too. Snapping scroll back to (0,0) on every scroll event
+   removes the underlying scroll instead of chasing its visual symptom.
+   Registered unconditionally (not gated on mobile-compact-mode) since a
+   window-level scroll is equally meaningless in every UI mode here — no
+   mode has ever relied on one, so this is a pure no-op everywhere else. */
+window.addEventListener('scroll', function(){
+  if(window.scrollX!==0 || window.scrollY!==0) window.scrollTo(0, 0);
+}, {passive:true});
 
 })();
 </script>
