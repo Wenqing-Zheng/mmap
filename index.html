@@ -185,7 +185,6 @@
     display:flex;flex-direction:column;align-items:center;gap:calc(var(--rail-w)*0.125);
     width:100%;min-height:8px;
   }
-  #railPinnedZone.drag-over{background:rgba(67,97,238,.12);border-radius:8px;}
   .rail-btn.rail-pinned{
     font-size:calc(var(--rail-w)*0.13);font-weight:700;letter-spacing:-.2px;
     white-space:normal;word-break:break-all;line-height:1.15;text-align:center;
@@ -383,8 +382,7 @@
   #canvasWrap{position:relative;flex:1;overflow:hidden;background:var(--canvas-bg);cursor:grab;}
   #canvasWrap.panning{cursor:grabbing;}
   /* "拖拽json进来直接import" — a dashed inset highlight while a file is
-     being dragged over the canvas, same visual language as
-     #railPinnedZone.drag-over, so it reads as "drop here" rather than
+     being dragged over the canvas, so it reads as "drop here" rather than
      looking like a rendering glitch. */
   #canvasWrap.drag-over-json{box-shadow:inset 0 0 0 3px var(--accent);}
   #stage{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform;}
@@ -670,9 +668,31 @@
      zoom sometimes never resets — font-size:16px on both fields (up
      from the desktop dialog's 14px/13px) keeps focus from ever
      triggering that zoom in the first place. */
-  html.mobile-compact-mode #insertSummary{margin-bottom:8px;max-height:30vh;font-size:16px;}
-  html.mobile-compact-mode #insertDetail{flex:1;min-height:0;margin-bottom:8px;font-size:16px;}
-  html.mobile-compact-mode .id-attr-grid{margin-bottom:8px;}
+  html.mobile-compact-mode #insertSummary{margin-bottom:8px;max-height:30vh;font-size:16px;flex-shrink:0;}
+  /* "detail文字不多的时候,继续保持当前layout,当文字很多...优先纵向撑大
+     detail编辑框,直到底下确认取消按钮被撑到接近屏幕底端,再进入滚动模式.
+     但是summary不允许变大,直接进入滚动模式(目前就是对的)" — the OLD
+     flex:1 always stretched this box to fill 100% of whatever flex space
+     was left over, even for a one-line detail — the exact opposite of
+     "文字不多时继续保持当前layout". flex:0 1 auto (grow:0, shrink:1,
+     basis:auto) makes its RESTING size its own natural content height
+     instead, matching desktop's own un-stretched dialog. min-height:0 +
+     shrink:1 is what then lets it shrink BELOW that natural size once
+     #insertDialog's fixed 100dvh height can no longer fit everything —
+     combined with overflow-y:auto (inherited from the base #insertDetail
+     rule below) and max-height:none (overriding that SAME base rule's
+     220px desktop cap, which would otherwise silently re-clamp growth
+     here too), that shrink becomes internal SCROLLING the instant total
+     content would push the actions row past the viewport's bottom edge —
+     never a hard clip. Every sibling below gets flex-shrink:0 so detail
+     is the ONLY box absorbing that overflow; without pinning them too,
+     the flex algorithm could shrink summary/labels/attr-grid/actions
+     instead (or as well), squeezing the very row this is trying to keep
+     visible. */
+  html.mobile-compact-mode #insertDetail{flex:0 1 auto;min-height:0;max-height:none;margin-bottom:8px;font-size:16px;}
+  html.mobile-compact-mode #insertDialog .id-label{flex-shrink:0;}
+  html.mobile-compact-mode .id-attr-grid{margin-bottom:8px;flex-shrink:0;}
+  html.mobile-compact-mode #insertActionsRow{flex-shrink:0;}
 
   /* ---------- mobile mode: bottom nav bar + bottom-sheet flyouts ----------
      Everything below is gated under html.mobile-mode (toggled by
@@ -6762,7 +6782,6 @@ var btnRandom = document.getElementById('btnRandom');
 var randomFlyout = document.getElementById('randomFlyout');
 var randomButtonList = document.getElementById('randomButtonList');
 var railPinnedZone = document.getElementById('railPinnedZone');
-var rbDragButtonId = null; // id of the materialized button currently being dragged (from the panel list OR a pinned rail shortcut)
 var randomFormulaInput = document.getElementById('randomFormulaInput');
 var compactFormulaInput = document.getElementById('compactFormulaInput');
 var compactFormulaDot = document.getElementById('compactFormulaDot');
@@ -6790,7 +6809,6 @@ function renderRandomPanel(){
   (state.randomButtons||[]).forEach(function(btn){
     var item = document.createElement('div');
     item.className = 'rb-item';
-    item.draggable = true;
     var name = document.createElement('span');
     name.className = 'rb-name';
     name.textContent = btn.name || '未命名';
@@ -6798,7 +6816,7 @@ function renderRandomPanel(){
     // ordinary activations in a row ("双击应该刷新两次,或者说没有双击功能,
     // 而不是重命名"); rename now lives ONLY in the right-click menu (see
     // openRbCtxMenu), for both materialized AND the global button.
-    name.title = btn.isGlobal ? '点击：随机展示 · 右键：重命名 · 可拖拽到左侧导航栏' : '点击：随机展示 · 右键：更多操作 · 可拖拽到左侧导航栏';
+    name.title = btn.isGlobal ? '点击：随机展示 · 右键：重命名' : '点击：随机展示 · 右键：更多操作';
     name.addEventListener('click', function(){ activateRandomButton(btn); });
     item.appendChild(name);
     var pool = randomButtonScopeBNodes(btn);
@@ -6810,18 +6828,6 @@ function renderRandomPanel(){
       ev.preventDefault();
       openRbCtxMenu(ev.clientX, ev.clientY, btn);
     });
-    // real (non-transparent) drag image — the browser's default "snapshot
-    // of the dragged element" behavior, so the user sees an actual shadow
-    // following the cursor instead of nothing at all until drop
-    // ("拖拽能做个影子吗,现在拖拽什么都没有,一松手就上去了,有点突兀"). No
-    // setDragImage() call needed for this — omitting it is what makes the
-    // browser fall back to its native element-snapshot ghost.
-    item.addEventListener('dragstart', function(ev){
-      rbDragButtonId = btn.id;
-      ev.dataTransfer.effectAllowed = 'move';
-      ev.dataTransfer.setData('text/plain', btn.id);
-    });
-    item.addEventListener('dragend', function(){ rbDragButtonId = null; });
     randomButtonList.appendChild(item);
   });
   // one always-present ghost/virtual button with a + to materialize a new one
@@ -6841,30 +6847,42 @@ function renderRandomPanel(){
   randomButtonList.appendChild(ghost);
   renderRailPinnedZone();
 }
-/* rail shortcuts: any materialized (non-global) button with pinnedToRail
-   set renders as its own small rail button, directly under btnParams —
-   "支持拖拽到左侧导航栏一级目录". Clicking it activates the button exactly
-   like clicking its panel-list entry does. */
+/* rail shortcuts: EVERY custom (non-global) random-pick button renders as
+   its own small rail button, directly under btnParams, automatically —
+   "自定义的随机选一按钮直接出现在电脑版和精致手机版的界面控制栏对应位置上,
+   不需要再拖拽过去" replaces the old drag-to-pin/pinnedToRail mechanism
+   entirely (a button used to only show up here after being dragged onto
+   the rail — now every one always does, with no separate "hidden until
+   dragged" state to track or persist). The global button is deliberately
+   excluded — it already has its own permanent entry point (btnRandom's
+   own rail icon), so showing it a second time here would just duplicate
+   it. Clicking activates the button exactly like clicking its panel-list
+   entry does; long-press (mirroring 手机精致模式's own tag/row long-press
+   pattern elsewhere in this file) opens the SAME rename/重新划分范围/删除
+   menu the desktop panel-list's own right-click already opens — "长按提示
+   删除和编辑二选一" is this file's existing 3-option menu, not a separate
+   2-option one, since 编辑 here means exactly what "重新划分范围" already
+   does (re-opening the picker to change scope) and 重命名 is cheap enough
+   to keep alongside it rather than removing it just for this one entry
+   point. */
 function renderRailPinnedZone(){
   railPinnedZone.innerHTML = '';
-  (state.randomButtons||[]).filter(function(b){ return b.pinnedToRail; }).forEach(function(btn){
+  (state.randomButtons||[]).filter(function(b){ return !b.isGlobal; }).forEach(function(btn){
     var b = document.createElement('button');
     b.className = 'rail-btn rail-pinned';
     b.textContent = (btn.name||'?').slice(0,6);
     b.title = btn.name||'未命名';
-    b.draggable = true;
+    // attachRbLongPress MUST run before the click listener below is
+    // attached — useCapture does NOT reorder listeners registered on the
+    // event's own TARGET element (only registration order does; capture
+    // vs bubble only changes ordering relative to ANCESTOR listeners) —
+    // see attachRbLongPress's own doc comment for the full reasoning.
+    attachRbLongPress(b, btn);
     b.addEventListener('click', function(){ activateRandomButton(btn); });
     b.addEventListener('contextmenu', function(ev){
       ev.preventDefault();
       openRbCtxMenu(ev.clientX, ev.clientY, btn);
     });
-    b.addEventListener('dragstart', function(ev){
-      rbDragButtonId = btn.id;
-      ev.dataTransfer.effectAllowed = 'move';
-      ev.dataTransfer.setData('text/plain', btn.id);
-      ev.dataTransfer.setDragImage(getTransparentDragImage(), 0, 0);
-    });
-    b.addEventListener('dragend', function(){ rbDragButtonId = null; });
     railPinnedZone.appendChild(b);
   });
   // keep 手机精致模式's own first-class random-button strip in lockstep —
@@ -6873,52 +6891,6 @@ function renderRailPinnedZone(){
   // covers all of them without a separate call at each site.
   if(typeof renderCompactRandomZone==='function') renderCompactRandomZone();
 }
-/* drag-to-pin: dropping a dragged button (from the panel list OR an
-   already-pinned rail shortcut) onto the rail pins it there —
-   "支持拖拽到左侧导航栏一级目录". Dropping a PINNED shortcut back onto the
-   panel list (or anywhere that isn't the rail) un-pins/deletes it —
-   "同时也支持拖拽出来删除". The global button is draggable exactly like any
-   materialized one (see renderRandomPanel's unconditional item.draggable)
-   and can reach both paths too — "固定的全局按钮也要支持拖拽和添加到左侧
-   主导航,和拖拽移除". */
-railEl.addEventListener('dragover', function(ev){
-  if(!rbDragButtonId) return;
-  ev.preventDefault();
-  railEl.classList.add('drag-over');
-});
-railEl.addEventListener('dragleave', function(){ railEl.classList.remove('drag-over'); });
-railEl.addEventListener('drop', function(ev){
-  railEl.classList.remove('drag-over');
-  if(!rbDragButtonId) return;
-  ev.preventDefault();
-  var btn = (state.randomButtons||[]).filter(function(b){ return b.id===rbDragButtonId; })[0];
-  if(btn && !btn.pinnedToRail){
-    btn.pinnedToRail = true;
-    scheduleSave();
-    renderRailPinnedZone();
-  }
-  rbDragButtonId = null;
-});
-randomButtonList.addEventListener('dragover', function(ev){
-  if(!rbDragButtonId) return;
-  ev.preventDefault();
-});
-randomButtonList.addEventListener('drop', function(ev){
-  if(!rbDragButtonId) return;
-  ev.preventDefault();
-  var btn = (state.randomButtons||[]).filter(function(b){ return b.id===rbDragButtonId; })[0];
-  if(btn && btn.pinnedToRail){
-    // dragging a PINNED rail shortcut back into the panel list just
-    // un-pins it (keeps the button itself, only removes the rail
-    // shortcut) — the "delete" gesture per the task description is
-    // specifically "拖拽出来删除", satisfied by removing it from the rail;
-    // the button still exists in its normal panel-list row afterward.
-    btn.pinnedToRail = false;
-    scheduleSave();
-    renderRandomPanel();
-  }
-  rbDragButtonId = null;
-});
 /* right-click context menu on a materialized (non-global) random-pick
    button: rename / re-scope (re-open the tree picker pre-filled with this
    button's current selection) / delete — "支持选择重命名该按钮,重新划分
@@ -6961,6 +6933,40 @@ function openRbCtxMenu(x, y, btn){
   menu.style.left = Math.min(x, window.innerWidth-mr.width-10)+'px';
   menu.style.top = Math.min(y, window.innerHeight-mr.height-10)+'px';
   setTimeout(function(){ document.addEventListener('mousedown', closeRbCtxMenuOnce, {capture:true}); }, 0);
+}
+/* "电脑端和手机端精致版都支持随机选一按钮自定义按钮长按提示删除和编辑二选
+   一" — reuses openRbCtxMenu's own 3-item menu (重命名/重新划分范围/删除)
+   unchanged rather than building a separate 2-option one, since "编辑" here
+   IS exactly "重新划分范围" (re-opening the scope picker) and 重命名 is
+   cheap to keep too. Never attached for the global button (it has no
+   重新划分范围/删除 options in that same menu anyway — see openRbCtxMenu's
+   own isGlobal guard — and per explicit confirmation it shouldn't be
+   long-press-able here at all). Registers its OWN capturing click
+   listener (not just a flag the CALLER's click handler has to remember
+   to check) so a long-press firing swallows the click the browser still
+   dispatches after mouseup, regardless of whichever click handler the
+   caller attaches afterward — attachRbLongPress(el, btn) must run BEFORE
+   that click listener is added (capturing listeners still run in
+   registration order relative to each other), same ordering requirement
+   renderCompactTreeView's own row listeners call out ("registered BEFORE
+   the collapse/expand click listener so its own click-suppression runs
+   first"). */
+function attachRbLongPress(el, btn){
+  if(btn.isGlobal) return;
+  var timer = null, fired = false;
+  function clear(){ if(timer){ clearTimeout(timer); timer = null; } }
+  el.addEventListener('mousedown', function(ev){
+    var x = ev.clientX, y = ev.clientY;
+    timer = setTimeout(function(){
+      fired = true;
+      openRbCtxMenu(x, y, btn);
+    }, LONG_PRESS_MS);
+  });
+  el.addEventListener('mouseup', clear);
+  el.addEventListener('mouseleave', clear);
+  el.addEventListener('click', function(ev){
+    if(fired){ fired = false; ev.stopImmediatePropagation(); ev.preventDefault(); }
+  }, true);
 }
 var randomFormulaDot = document.getElementById('randomFormulaDot');
 /* real-time validity dot + apply, on every keystroke — not just on blur —
@@ -8997,6 +9003,10 @@ function renderCompactRandomZone(){
     var b = document.createElement('button');
     b.className = 'compact-rb-btn';
     b.textContent = btn.name||'?';
+    // same ordering requirement as renderRailPinnedZone's own call —
+    // attachRbLongPress must run BEFORE the click listener below (see its
+    // own doc comment).
+    attachRbLongPress(b, btn);
     b.addEventListener('click', function(){ activateRandomButton(btn); });
     compactRandomZoneEl.appendChild(b);
   });
@@ -9012,13 +9022,10 @@ refreshCompactDepthUI();
 compactRelaxSliderEl.value = Math.round(appParams.relaxStrength*100);
 applyUiMode(appParams.uiMode);
 applyTheme();
-// pinned random-pick rail shortcuts otherwise only ever get (re)rendered
-// from renderRandomPanel() (when the panel opens) or the drag-to-pin drop
-// handler — neither runs on a fresh page load, so a previously-pinned
-// button stayed invisible in #railPinnedZone until the user opened the
-// random panel once, even though state.randomButtons already had
-// pinnedToRail:true persisted — "随机选一拖拽到导航栏上的按钮,只要一刷新
-// 页面就会消失,直到单击随机选一才会又出现".
+// every custom random-pick button (see renderRailPinnedZone's own doc
+// comment) must be visible from the very first render, not just after
+// the user happens to open the 随机选一 panel once — that panel's own
+// renderRandomPanel() is the only other call site that refreshes this.
 renderRailPinnedZone();
 render();
 // on every fresh load/refresh, act as if the user pressed the global
