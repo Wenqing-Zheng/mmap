@@ -1524,6 +1524,7 @@
     </div>
     <div class="id-actions" id="insertActionsRow">
       <button class="id-btn id-btn-delete" id="insertDeleteBtn">删除</button>
+      <button class="id-btn plain" id="insertEnterBtn">进入</button>
       <button class="id-btn plain" id="insertCancelBtn">取消</button>
       <button class="id-btn primary" id="insertOkBtn">确定</button>
     </div>
@@ -4792,6 +4793,7 @@ var insertBorderLinesValueEl = document.getElementById('insertBorderLinesValue')
 var insertMasterLevelValueEl = document.getElementById('insertMasterLevelValue');
 var insertSizeValueEl = document.getElementById('insertSizeValue');
 var insertDeleteBtn = document.getElementById('insertDeleteBtn');
+var insertEnterBtn = document.getElementById('insertEnterBtn');
 var pendingInsert = null; // {kind, anchorId, dir, batch, editNode}
 var focusBeforeInsertDialog = null;
 // defaults for a NEW node being created in this dialog — all ignored in
@@ -4937,6 +4939,14 @@ function openInsertDialog(cfg){
   // and never for the ultimate root (same hard guard deleteSubtree/
   // deleteNodeOnly/openTreeDeleteMenu all already enforce elsewhere).
   insertDeleteBtn.style.display = (cfg.mode==='edit' && cfg.node.id!==state.rootId) ? '' : 'none';
+  // "手机长按节点以后(电脑option点击等),弹出信息编辑框,最底下取消左边再加
+  // 一个按钮:进入,功能是进入这个节点作为可见区域根节点的视角" — unlike
+  // 删除 above, 进入 is valid for ANY real existing node including the
+  // ultimate root itself (entering the root is just resetting focus back
+  // to it, not a structural no-op the way deleting it would be), so this
+  // only ever gates on mode:'edit' — there being a real, already-existing
+  // node to enter — never on cfg.node.id!==state.rootId.
+  insertEnterBtn.style.display = (cfg.mode==='edit') ? '' : 'none';
   // "按➕和未归纳加号时...直接引导手机输入法弹出...长按节点编辑信息的时候
   // 同样的窗口不要让输入法自动弹出,只是两个新建节点按钮要自动弹出" —
   // scoped to 手机精致模式 only (desktop/手机原始模式 keep their prior
@@ -5067,6 +5077,28 @@ insertDeleteBtn.addEventListener('click', function(){
   if(typeof renderCompactTreeView==='function' && compactTreeSheetEl.classList.contains('open')) renderCompactTreeView();
   if(treeFlyout && treeFlyout.classList.contains('open')) renderTreeView();
   render();
+});
+/* "手机长按节点以后(电脑option点击等),弹出信息编辑框,最底下取消左边再加
+   一个按钮:进入,功能是进入这个节点作为可见区域根节点的视角" — same effect
+   as double-tap (compactNodeTap) / 🟧 / desktop's own Shift+Enter: this
+   node becomes the new focus root, deselected. commitInsertDialog() runs
+   FIRST (saving any summary/detail/category edits the user made in this
+   same dialog, exactly like clicking 确定 would) and already pushes its
+   OWN undo snapshot for edit mode — deliberately NOT pushing a second one
+   here, so "编辑+进入" bundles into a single ⌘Z step, matching how
+   resetViewToNewNode's own focus-adjusting mutations after a commit are
+   never given a separate undo entry either. */
+insertEnterBtn.addEventListener('click', function(){
+  if(!pendingInsert || pendingInsert.mode!=='edit') return;
+  var n = pendingInsert.node;
+  var alreadyFocus = state.focusId === n.id;
+  commitInsertDialog();
+  n.drilled = true;
+  state.focusId = n.id;
+  selectedId = null;
+  scheduleSave();
+  render();
+  if(alreadyFocus) resyncRootView();
 });
 insertOverlay.addEventListener('mousedown', function(e){ if(e.target===insertOverlay) closeInsertDialog(); });
 /* 手机精致模式's full-screen editor closes via the same "下滑中间/左滑
@@ -5471,8 +5503,33 @@ document.addEventListener('keydown', function(e){
     }
   }
 
-  if(e.shiftKey && (e.key==='ArrowUp'||e.key==='ArrowDown')){
+  if(e.shiftKey && (e.key==='ArrowUp'||e.key==='ArrowDown'||e.key==='ArrowLeft'||e.key==='ArrowRight')){
     e.preventDefault();
+    if(e.key==='ArrowLeft' || e.key==='ArrowRight'){
+      // "当前选中节点是可见区域根节点的时候,再按shift+⬅️➡️要能够切换到它的
+      // 兄弟节点(目前还没有,是锁死的)" — mirrors 手机精致模式's own
+      // cbNavSiblingEl/cbNavPrevSiblingEl (cycling state.focusId among its
+      // OWN parent's children) exactly, just reachable from the keyboard.
+      // Deliberately gated on cur.id===state.focusId, same as plain
+      // ArrowLeft/Right below: cur is a NORMAL selected descendant (not
+      // the visible root itself) has no equivalent Shift+←/→ behavior at
+      // all here — desktop's plain ←/→ already covers "move selection to
+      // a spatial sibling" for that case, so Shift adds nothing new there.
+      if(cur.id!==state.focusId) return;
+      var pnLR = parentOf(state.focusId);
+      if(!pnLR || pnLR.children.length<2) return;
+      var idxLR = pnLR.children.indexOf(state.focusId);
+      var nextIdLR = e.key==='ArrowRight'
+        ? pnLR.children[(idxLR+1) % pnLR.children.length]
+        : pnLR.children[(idxLR-1+pnLR.children.length) % pnLR.children.length];
+      pushUndo();
+      state.focusId = nextIdLR;
+      selectedId = null;
+      collapseBeyondDepth(nextIdLR, appParams.maxAutoDepth);
+      setExpandedToDepth(nextIdLR, appParams.maxAutoDepth);
+      scheduleSave(); render();
+      return;
+    }
     if(e.key==='ArrowUp'){
       if(cur.id === state.focusId){
         // cur IS the current visible-area root (currentSelectedNode()
@@ -7909,11 +7966,11 @@ var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge at 中速 (mult=
 // what fast/mid/slow still do) but to pan compactChildrenView itself — the
 // same offsetX/offsetY a live-finger touch-drag used to write directly,
 // before that gesture was removed entirely for being "非常卡,滑动识别不
-// 准确,且会导致其他按钮卡死". Unlike fast/mid/slow, repeated scrolling one
-// screen at a time is the whole point of this mode, so it deliberately
-// does NOT set compactDragConsumed — a 🖐️ tap right after a scroll still
-// just advances to 'off' normally, it never short-circuits early the way
-// the move-modes do.
+// 准确,且会导致其他按钮卡死". "按了方向键,再按一下按钮就应该退回到默认
+// 状态" — scroll now sets compactDragConsumed too (see compactScrollView's
+// own comment), so the NEXT 🖐️ tap after any pan short-circuits straight
+// to 'off' exactly like fast/mid/slow already did — only the FIRST tap
+// arming scroll (with no pan yet) still advances normally.
 var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow', 'scroll', 'onlyEmptyB'];
 var COMPACT_DRAG_MULT = {mid:1, fast:25, slow:1/5};
 var COMPACT_SCROLL_STEP = BASE_DIAM*0.6; // one deliberate "page" of scroll per tap, bigger than a single node-nudge step
@@ -8033,6 +8090,17 @@ function compactScrollView(dx, dy){
   compactChildrenView.offsetX -= dx*COMPACT_SCROLL_STEP;
   compactChildrenView.offsetY -= dy*COMPACT_SCROLL_STEP;
   clampCompactChildrenOffset(vis.width, vis.height);
+  // "🖐️按钮按动4下变红以后,如果按了方向键,再按一下按钮就应该退回到默认
+  // 状态,而不是继续变成🫥再变默认" — scroll now short-circuits the next
+  // 🖐️ tap straight to 'off' exactly like fast/mid/slow already do via
+  // compactMoveSelected's own compactDragConsumed=true (see its comment) —
+  // an arrow press that actually panned the view is "one action taken",
+  // not "keep cycling through remaining states". Reverses this function's
+  // own former "deliberately does NOT set compactDragConsumed" behavior —
+  // repeated scrolling one screen at a time is still the point of this
+  // mode WHILE armed, only the very NEXT 🖐️ tap after any pan now exits
+  // instead of advancing to 仅空B.
+  compactDragConsumed = true;
   render();
 }
 
