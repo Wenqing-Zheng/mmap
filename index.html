@@ -6967,6 +6967,53 @@ function attachRbLongPress(el, btn){
   el.addEventListener('click', function(ev){
     if(fired){ fired = false; ev.stopImmediatePropagation(); ev.preventDefault(); }
   }, true);
+  /* "手机长按还是没反应" — real mobile browsers only ever synthesize
+     mousedown/mouseup/click from a tap AFTER touchend fires; there is no
+     synthetic mousedown while a finger is still resting on the screen, so
+     the mousedown-based timer above (correct for desktop/mouse) never
+     even starts on a real touch — this file's own canvas touch->mouse
+     bridge (see its doc comment near canvasWrap) exists for exactly this
+     reason, but it's scoped to canvasWrap only and gated on
+     isCompactMode(), covering neither #railPinnedZone (desktop AND 手机
+     原始模式) nor #compactRandomZone (手机精致模式). Rather than widening
+     that bridge's scope (risking regressions in gestures it already
+     handles correctly), this button gets its OWN independent native
+     touchstart/touchmove/touchend/touchcancel long-press implementation —
+     same movement-tolerance-cancels-the-press pattern already used
+     elsewhere in this file (compactNodeMousedown's own onMove, etc.):
+     a real finger slide before the timer fires cancels it (this is a
+     scroll/drag attempt, not a long-press); touchstart itself stays
+     passive (never blocks scrolling) — only touchend calls
+     preventDefault(), and only once fired is true, to suppress the
+     browser's own delayed native tap-derived mousedown/mouseup/click
+     synthesis so a completed long-press never ALSO activates the button. */
+  var tStartX=0, tStartY=0, tMoved=false;
+  el.addEventListener('touchstart', function(ev){
+    if(ev.touches.length!==1) return;
+    var t = ev.touches[0];
+    tStartX = t.clientX; tStartY = t.clientY; tMoved = false;
+    timer = setTimeout(function(){
+      fired = true;
+      openRbCtxMenu(t.clientX, t.clientY, btn);
+    }, LONG_PRESS_MS);
+  }, {passive:true});
+  el.addEventListener('touchmove', function(ev){
+    if(tMoved || !ev.touches.length) return;
+    var t = ev.touches[0];
+    if(Math.abs(t.clientX-tStartX)+Math.abs(t.clientY-tStartY)>10){
+      tMoved = true;
+      clear();
+    }
+  }, {passive:true});
+  el.addEventListener('touchend', function(ev){
+    clear();
+    // the menu is already open by the time touchend fires for a real
+    // long-press — suppress the browser's own delayed tap-derived click
+    // (mousedown/mouseup/click all synthesized together right after this)
+    // so it doesn't ALSO activate the button (== "随机选一" for these).
+    if(fired) ev.preventDefault();
+  });
+  el.addEventListener('touchcancel', clear);
 }
 var randomFormulaDot = document.getElementById('randomFormulaDot');
 /* real-time validity dot + apply, on every keystroke — not just on blur —
