@@ -372,10 +372,20 @@
   }
   #rbNameInput:focus{border-color:var(--accent);}
   #rbTreePicker{flex:1;overflow:auto;border:1px solid var(--panel-border);border-radius:10px;padding:6px;margin-bottom:12px;}
-  .rbt-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;font-size:12px;color:var(--text-main);}
+  .rbt-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;font-size:12px;color:var(--text-main);cursor:pointer;}
   .rbt-row:hover{background:rgba(120,130,160,.1);}
   .rbt-row input{margin:0;flex-shrink:0;}
   .rbt-row .rbt-cat{font-size:10px;color:var(--text-dim);flex-shrink:0;}
+  /* fold/unfold toggle — same 14px-per-depth indent column every row
+     already reserves (the spacer keeps childless rows' checkbox aligned
+     with foldable siblings' own checkbox instead of shifting left).
+     min-width:20px (not just width, since flex would otherwise shrink a
+     wide glyph like ▾ under font-size scaling) keeps a stable, easy-to-
+     tap touch target regardless of which glyph is showing. */
+  .rbt-fold{
+    flex-shrink:0;min-width:20px;text-align:center;font-size:10px;
+    color:var(--text-dim);user-select:none;
+  }
   #rbMaterializeDialog .id-row{display:flex;justify-content:space-between;align-items:center;}
 
   /* ---------- canvas ---------- */
@@ -7074,10 +7084,18 @@ var rbNameInput = document.getElementById('rbNameInput');
 var rbTreePicker = document.getElementById('rbTreePicker');
 var rbCheckedTop = null; // Set-like object of top-level checked node ids while the dialog is open
 var rbEditingButton = null; // non-null while the dialog is re-scoping an EXISTING button (see openRbMaterializeDialog's editBtn param) instead of creating a new one
+// "触摸随机选一的范围定义弹窗里面的节点,要能够折叠和展开子节点" — purely a
+// DISPLAY-layer fold state for THIS picker (never touches n.drilled, which
+// is the canvas's own real expand/collapse state — toggling a node here
+// must never change what's actually shown on the canvas). Reset to empty
+// (nothing folded, full tree visible) every time the dialog opens, same
+// lifecycle as rbCheckedTop.
+var rbFoldedIds = null;
 function openRbMaterializeDialog(editBtn){
   rbEditingButton = editBtn || null;
   rbNameInput.value = editBtn ? (editBtn.name||'') : '';
   rbCheckedTop = {};
+  rbFoldedIds = {};
   if(editBtn){
     (editBtn.checkedIds||[]).forEach(function(id){ if(node(id)) rbCheckedTop[id] = true; });
   }
@@ -7107,6 +7125,26 @@ function renderRbTreePicker(){
     var row = document.createElement('div');
     row.className = 'rbt-row';
     row.style.paddingLeft = (depth*14)+'px';
+    // "触摸随机选一的范围定义弹窗里面的节点,要能够折叠和展开子节点...电脑
+    // 上鼠标左键单击,要能折叠展开" — abKids mirrors this picker's own
+    // category filter (C nodes never shown here, so they don't count
+    // toward "has children worth folding" either); folded state
+    // (rbFoldedIds) is purely local display state for this dialog, never
+    // n.drilled — collapsing a node here must never change what's
+    // actually expanded on the canvas.
+    var abKids = n.children.map(node).filter(function(c){ return c && c.category!=='C'; });
+    var hasAbKids = abKids.length>0;
+    var folded = !!rbFoldedIds[id];
+    if(hasAbKids){
+      var fold = document.createElement('span');
+      fold.className = 'rbt-fold';
+      fold.textContent = folded ? '▸' : '▾';
+      row.appendChild(fold);
+    } else {
+      var spacer = document.createElement('span');
+      spacer.className = 'rbt-fold rbt-fold-spacer';
+      row.appendChild(spacer);
+    }
     var cb = document.createElement('input');
     cb.type = 'checkbox';
     var implicit = rbIsImplicitlyChecked(id) && !rbCheckedTop[id];
@@ -7117,14 +7155,30 @@ function renderRbTreePicker(){
       else delete rbCheckedTop[id];
       renderRbTreePicker();
     });
+    // checkbox clicks must never ALSO toggle the fold — stopPropagation
+    // keeps the row's own click handler (added below) from seeing them.
+    cb.addEventListener('click', function(ev){ ev.stopPropagation(); });
     var label = document.createElement('span');
     label.textContent = richToPlain(n.summary) || '(未命名)';
     var cat = document.createElement('span');
     cat.className = 'rbt-cat';
     cat.textContent = n.category;
     row.appendChild(cb); row.appendChild(label); row.appendChild(cat);
+    // "手机上打开都要能触摸折叠展开...电脑上鼠标左键单击,要能折叠展开.
+    // 但是手机上功能确保完成更重要" — a plain click covers BOTH: a real
+    // mouse left-click on desktop fires 'click' directly, and every mobile
+    // browser already synthesizes a 'click' from a real tap (no custom
+    // touch handling needed here at all, unlike attachRbLongPress's own
+    // long-press timer — a SHORT tap is exactly what browsers already
+    // turn into a native click for free).
+    row.addEventListener('click', function(){
+      if(!hasAbKids) return;
+      if(rbFoldedIds[id]) delete rbFoldedIds[id];
+      else rbFoldedIds[id] = true;
+      renderRbTreePicker();
+    });
     rbTreePicker.appendChild(row);
-    n.children.forEach(function(cid){ walk(cid, depth+1); });
+    if(!folded) n.children.forEach(function(cid){ walk(cid, depth+1); });
   })(state.rootId, 0);
 }
 document.getElementById('rbCancelBtn').addEventListener('click', closeRbMaterializeDialog);
