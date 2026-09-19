@@ -654,6 +654,12 @@
      be order:-1 without also fighting that centering). Deletes the WHOLE
      subtree — see id-btn-delete's own click handler for the confirm step. */
   .id-btn-delete{background:#d1495b;color:#fff;margin-right:auto;}
+  /* "S按钮...默认背景透明,关闭,按动的时候循环切换S/2/关闭,S和2状态下按钮
+     颜色分别是红色,绿色" — .id-btn.plain's own background is the "关闭"
+     state (transparent-ish gray), so only the two ON states need their own
+     override classes here. */
+  .id-fav-s{background:#d1495b;color:#fff;}
+  .id-fav-2{background:#3ea36b;color:#fff;}
 
   /* 手机精致模式's own edit-dialog re-layout: full-bleed page instead of a
      floating centered card — "不要像电脑那样悬浮弹窗，而是直接手机全屏用
@@ -1081,9 +1087,10 @@
      needing a separate row8/row9 — same clamp()-based sizing as every
      other .compact-btn keeps them square regardless of wrap.
      "新按钮↩️该到底部可拖拽拉起的按钮区域的最右边一个,和其他按钮等距排列"
-     — ⭕️/🌈's own dedicated undo (see resetRandomUndoStack) is appended as
-     this row's 7th and last button; the existing plain flex+gap layout
-     already spaces every button evenly with no extra rule needed. */
+     — ⭕️/🌈 and every jump action's own shared undo (see
+     compactActionUndoStack) is appended as this row's 7th and last
+     button; the existing plain flex+gap layout already spaces every
+     button evenly with no extra rule needed. */
   #compactBarRow4{flex-wrap:wrap;}
   #compactBarRow4, #compactBarRow7{
     display:flex;align-items:center;gap:clamp(6px,2vw,10px);
@@ -1390,7 +1397,7 @@
         <button class="compact-btn" id="cbMoreDesktop" title="返回电脑模式">🖥</button>
         <button class="compact-btn" id="cbMoreRaw" title="手机原始模式">📱</button>
         <button class="compact-btn" id="cbMoreFit" title="回到全局">⛩</button>
-        <button class="compact-btn" id="cbResetRandomUndo" title="撤销最近一次⭕️或🌈操作（只影响这两个按钮，不影响其他任何操作）">↩️</button>
+        <button class="compact-btn" id="cbResetRandomUndo" title="撤销最近一次⭕️/🌈操作或跳转（随机选一/搜索/tree view点击）；不影响其他任何操作">↩️</button>
       </div>
       <div id="compactBarRow7">
         <span id="cbLockHFitLabel">锁定水平适配屏幕</span>
@@ -1398,7 +1405,7 @@
       </div>
       <div id="compactBarRow8">
         <div id="compactFormulaWrap">
-          <textarea id="compactFormulaInput" rows="2" spellcheck="false"></textarea>
+          <textarea id="compactFormulaInput" rows="2" spellcheck="false" title="变量：i重要度 m熟练度 p均衡系数"></textarea>
           <div id="compactFormulaDot"></div>
         </div>
       </div>
@@ -1422,7 +1429,7 @@
 
   <div id="randomFlyout">
     <div class="param-block">
-      <div class="param-label">概率公式</div>
+      <div class="param-label">概率公式（变量：i重要度 m熟练度 p均衡系数）</div>
       <div id="randomFormulaWrap">
         <textarea id="randomFormulaInput" rows="2" spellcheck="false"></textarea>
         <div id="randomFormulaDot"></div>
@@ -1554,6 +1561,7 @@
     </div>
     <div class="id-actions" id="insertActionsRow">
       <button class="id-btn id-btn-delete" id="insertDeleteBtn">删除</button>
+      <button class="id-btn plain" id="insertFavoriteBtn">S</button>
       <button class="id-btn plain" id="insertEnterBtn">进入</button>
       <button class="id-btn plain" id="insertCancelBtn">取消</button>
       <button class="id-btn primary" id="insertOkBtn">确定</button>
@@ -1630,7 +1638,7 @@ var RAIL_W_STORAGE_KEY = 'spatial_mindmap_railw_v1';
 // wrong geometry. localStorage's OWN state (loadState) still migrates
 // forward normally, since that's this same session's data evolving across
 // code updates, not a foreign file the user is explicitly importing.
-var SCHEMA_VERSION = 2;
+var SCHEMA_VERSION = 3; // bumped for the new per-node `favorite` field (S/2 收藏状态)
 var RAIL_W_MIN = 48, RAIL_W_MAX = 160, RAIL_W_DEFAULT = 64;
 var MIN_SCALE = 0.02, MAX_SCALE = 4;
 var GLOW_MS = 30000;
@@ -1767,8 +1775,18 @@ var COMPACT_DETAIL_MAX_LINES = 4;
    Below-threshold mastery gets a large bonus — "master小于阈值则大幅增大
    概率" — with the threshold written directly into the formula text as a
    literal number (no separate Th stepper control anymore — "Th也删掉,直接
-   从公式里面编辑文本就能支持"). */
-var DEFAULT_RANDOM_FORMULA = 'i * (6 - m) + (m < 2 ? 20 : 0)';
+   从公式里面编辑文本就能支持").
+   Third variable p (see siblingBalanceP) = 1 / (该B节点所在母节点下，参与
+   随机池的B类孩子总数，含自身) — "均衡参数p...表示归一化成所有不同根节点
+   下的b类节点,它们母节点被选中概率一样": summing p over every B child of
+   the SAME parent yields exactly 1, so multiplying the raw weight by p
+   exactly cancels out a parent's sheer number of B children, giving every
+   B-bearing parent an equal aggregate selection probability regardless of
+   how many siblings it has. The default formula applies Math.pow(p,0.5)
+   rather than p itself — "用概率分数乘以Math.pow(p,0.5)表示降低这种归一化
+   强度" — a full p multiply would fully equalize parents; the sqrt only
+   partially dampens the sibling-count effect. */
+var DEFAULT_RANDOM_FORMULA = '(i * (6 - m) + (m < 2 ? 20 : 0)) * Math.pow(p, 0.5)';
 
 /* escapes a plain-text string for safe insertion as HTML — used only when
    rendering wrapText's own plain-text sLines/dLines (手机精致模式's
@@ -1832,7 +1850,7 @@ function freshState(){
     rootId: rootId,
     focusId: rootId,
     nodes: nodes,
-    randomButtons: [defaultRandomButton(rootId)],
+    randomButtons: [defaultRandomButton(rootId), fixedFavoriteButton('S','S'), fixedFavoriteButton('2','2')],
     randomFormula: DEFAULT_RANDOM_FORMULA
   };
 }
@@ -1844,6 +1862,18 @@ function freshState(){
    subtree, so checkedIds only needs to remember the top-level picks. */
 function defaultRandomButton(rootId){
   return {id: uid('rb'), name:'全局', checkedIds: [rootId], isGlobal:true};
+}
+/* the two permanent "收藏状态" buttons — "紧挨在全局后面...长按不能删除也
+   不能修改范围或者重命名" (same long-press/re-scope/delete exclusion the
+   global button already gets, via isFixed rather than isGlobal so the
+   global-only special cases — e.g. its own separate permanent rail icon —
+   don't also apply to these). Unlike every OTHER button, their scope is
+   NOT computed from checkedIds/subtree-membership at all — it's every B
+   node anywhere whose own n.favorite field matches favKey (see
+   randomButtonScopeBNodes' own isFixed branch) — checkedIds stays an
+   empty array here since it's simply never read for a fixed button. */
+function fixedFavoriteButton(favKey, name){
+  return {id: uid('rb'), name:name, checkedIds: [], isFixed:true, favKey:favKey};
 }
 function makeNode(id, parentId, summary, detail){
   return {
@@ -1876,7 +1906,14 @@ function makeNode(id, parentId, summary, detail){
     // separate field — it is DEFINED as borderLines (see importanceOf()),
     // so editing the border-lines stepper IS editing importance, 1:1 and
     // in real time; there is nothing else to keep in sync.
-    masterLevel: 3
+    masterLevel: 3,
+    // "收藏状态" — the S/2 fixed random-pick buttons' own scope membership
+    // (see FIXED_RANDOM_BUTTON_DEFS): null/'S'/'2', cycled via the S toggle
+    // in #insertActionsRow. "未来可能增添到3/4但先不增加" — a single
+    // string field (not a Set/array of flags) is deliberately the simplest
+    // representation for the current 3-state (off/S/2) cycle; widening to
+    // more states later is a UI/button-list change, not a data-model one.
+    favorite: null
   };
 }
 /* importance is not its own stored field — it's identically the node's
@@ -1910,6 +1947,20 @@ function sanitizeRandomButtons(s){
   });
   var hasGlobal = s.randomButtons.some(function(b){ return b.isGlobal; });
   if(!hasGlobal) s.randomButtons.unshift(defaultRandomButton(s.rootId));
+  // ensure both fixed S/2 buttons exist exactly once (state saved before
+  // this feature existed has neither) — "紧挨在全局后面" is enforced by
+  // ALWAYS re-splicing them to sit directly after the global button below,
+  // not just by where they happen to get inserted here.
+  ['S','2'].forEach(function(favKey){
+    var has = s.randomButtons.some(function(b){ return b.isFixed && b.favKey===favKey; });
+    if(!has) s.randomButtons.push(fixedFavoriteButton(favKey, favKey));
+  });
+  var fixedBtns = ['S','2'].map(function(favKey){
+    return s.randomButtons.find(function(b){ return b.isFixed && b.favKey===favKey; });
+  });
+  s.randomButtons = s.randomButtons.filter(function(b){ return !b.isFixed; });
+  var globalIdx = s.randomButtons.findIndex(function(b){ return b.isGlobal; });
+  s.randomButtons.splice(globalIdx+1, 0, fixedBtns[0], fixedBtns[1]);
   // a formula referencing the removed showCount/N variables is a leftover
   // from before that feature was replaced by Th-based weighting (see
   // DEFAULT_RANDOM_FORMULA's own comment) — evalRandomWeight would just
@@ -1978,6 +2029,7 @@ function sanitizeStateNodes(s){
     delete n.importance; // importance is now derived from borderLines — see importanceOf()
     if(n.masterLevel==null) n.masterLevel = 3;
     delete n.showCount; // showCount tracking was removed entirely — see task on Th-based weighting
+    if(n.favorite!=='S' && n.favorite!=='2') n.favorite = null;
   });
 }
 /* fixupCategoryConstraints (the A>B>C hierarchy enforcement pass this
@@ -2017,29 +2069,39 @@ function undo(){
   render();
 }
 /* "⭕️和🌈按钮手机端都需要弹窗确认了再执行" — replaced (per follow-up) by
-   a SEPARATE, smaller undo stack scoped ONLY to these two buttons —
-   "撤回,取消掉最后一次或者若干次的⭕️和/或🌈操作。别的操作不取消" — every
-   OTHER action in this app still goes through the main ⌘Z undoStack
-   above unaffected; this one exists purely so repeated ⭕️/🌈 taps (which
-   already skip confirm() for a snappy, low-friction feel) can be walked
-   back individually without also undoing unrelated edits made in
-   between two ⭕️/🌈 presses — the main undoStack is LIFO over EVERYTHING,
-   so a single ⌘Z there would undo whatever the user did most recently,
-   not necessarily the ⭕️/🌈 press they actually want reversed. */
-var resetRandomUndoStack = [], RESET_RANDOM_MAX_UNDO = 20;
-function pushResetRandomUndo(){
+   a SEPARATE undo stack scoped to a specific SET of actions, not the main
+   ⌘Z undoStack above — "撤回,取消掉最后一次或者若干次的⭕️和/或🌈操作。
+   别的操作不取消" originally covered only ⭕️/🌈, then explicitly widened
+   ("↩️按钮额外具有撤回跳转功能,无论是随机选一按钮跳转还是从搜索框或者
+   tree view点击跳转,都和撤回⭕️🌈一样统一合并处理撤回") to include every
+   "jump to a different focus root" action too (activateRandomButton/
+   commitSearchResult/tree-view's own tag-click jump/cbAddToInbox's
+   onCommit jump — see each call site's own pushCompactActionUndo() call).
+   The main undoStack is LIFO over EVERYTHING (every edit, drag, size
+   change, etc), so a single ⌘Z there undoes whatever happened most
+   recently overall — not necessarily the SPECIFIC ⭕️/🌈 press or jump the
+   user actually meant to reverse if anything else happened in between.
+   This stack additionally snapshots focusId/selectedId (the main undo()
+   above deliberately does NOT — it only clamps them to still-valid ids
+   after a data-level revert) because "撤回跳转" means undoing the VIEW
+   change itself, not just any node data a jump happened to touch. */
+var compactActionUndoStack = [], COMPACT_ACTION_MAX_UNDO = 20;
+function pushCompactActionUndo(){
   try{
-    resetRandomUndoStack.push(JSON.stringify({nodes:state.nodes, rootId:state.rootId}));
-    if(resetRandomUndoStack.length>RESET_RANDOM_MAX_UNDO) resetRandomUndoStack.shift();
+    compactActionUndoStack.push(JSON.stringify({
+      nodes:state.nodes, rootId:state.rootId,
+      focusId:state.focusId, selectedId:selectedId
+    }));
+    if(compactActionUndoStack.length>COMPACT_ACTION_MAX_UNDO) compactActionUndoStack.shift();
   }catch(e){}
 }
-function undoResetRandom(){
-  if(!resetRandomUndoStack.length) return;
-  var snap = JSON.parse(resetRandomUndoStack.pop());
+function undoCompactAction(){
+  if(!compactActionUndoStack.length) return;
+  var snap = JSON.parse(compactActionUndoStack.pop());
   state.nodes = snap.nodes;
   state.rootId = snap.rootId;
-  if(!state.nodes[state.focusId]) state.focusId = state.rootId;
-  if(selectedId && !state.nodes[selectedId]) selectedId = state.focusId;
+  state.focusId = state.nodes[snap.focusId] ? snap.focusId : state.rootId;
+  selectedId = (snap.selectedId && state.nodes[snap.selectedId]) ? snap.selectedId : null;
   scheduleSave();
   render();
   resyncRootView();
@@ -2099,8 +2161,21 @@ function subtreeIds(id, out){
    union of every checked node's own subtree (checking a node implicitly
    checks its whole subtree, so this expands each checkedId out and filters
    to category==='B'), deduplicated. The global button's checkedIds is just
-   [rootId], so this naturally covers "every B node anywhere" for it. */
+   [rootId], so this naturally covers "every B node anywhere" for it.
+   The two fixed S/2 buttons (btn.isFixed) are a DIFFERENT scope rule
+   entirely — not checkedIds/subtree membership at all, but every B node
+   anywhere whose own n.favorite field equals btn.favKey (see
+   fixedFavoriteButton) — a node opts into S/2's pool individually via the
+   insert-dialog's S toggle, independent of where it lives in the tree. */
 function randomButtonScopeBNodes(btn){
+  if(btn.isFixed){
+    return Object.keys(state.nodes).map(node).filter(function(n){
+      if(!n || n.category!=='B' || n.favorite!==btn.favKey) return false;
+      var isFilled = children(n.id).length>0 || richToPlain(n.detail||'').length>0;
+      if(appParams.onlyEmptyBNodes ? isFilled : !isFilled) return false;
+      return true;
+    });
+  }
   var seen = {}, out = [];
   (btn.checkedIds||[]).forEach(function(id){
     subtreeIds(id).forEach(function(cid){
@@ -2127,14 +2202,29 @@ function randomButtonScopeBNodes(btn){
   });
   return out;
 }
+/* the formula's third variable p (see DEFAULT_RANDOM_FORMULA's own comment
+   for the full rationale): 1 / (n's parent's B-category child count,
+   counting n itself) — summing p over every B child of the SAME parent
+   equals exactly 1, so a formula that multiplies by p cancels out a
+   parent's sheer number of B children entirely (equal aggregate
+   probability per B-bearing parent regardless of sibling count). A
+   rootless/parentless n (shouldn't normally happen for a B node) falls
+   back to p=1 (no normalization). */
+function siblingBalanceP(n){
+  if(!n.parentId) return 1;
+  var parent = node(n.parentId);
+  if(!parent) return 1;
+  var bSiblingCount = parent.children.map(node).filter(function(c){ return c && c.category==='B'; }).length;
+  return bSiblingCount>0 ? 1/bSiblingCount : 1;
+}
 /* evaluate the user-editable weighting formula for one B node. Wrapped in
    try/catch since the formula is free-text JS the user can edit from the
    panel — a syntax error or runtime throw must fall back to a neutral
    weight (1) rather than breaking the whole picker. */
 function evalRandomWeight(formula, n){
   try{
-    var fn = new Function('i','m', 'return ('+formula+');');
-    var w = fn(importanceOf(n), n.masterLevel);
+    var fn = new Function('i','m','p', 'return ('+formula+');');
+    var w = fn(importanceOf(n), n.masterLevel, siblingBalanceP(n));
     return (typeof w==='number' && isFinite(w) && w>=0) ? w : 0;
   }catch(e){ return 1; }
 }
@@ -2142,19 +2232,24 @@ function evalRandomWeight(formula, n){
    evalRandomWeight (which always falls back to a safe neutral weight so a
    bad formula never breaks actual picking), this must be able to say
    "no, this text is currently broken" so the UI can refuse to apply it.
-   Tests against every combination of i(1-5) x m(1-5),
-   not just one sample point, since a formula can throw only for particular
-   inputs (e.g. dividing by m-3) and still compile/run fine for
-   others — real B nodes span the whole 1-5 range on both axes, so anything
-   that fails even one combination WOULD eventually throw or misbehave for
-   some real node. */
+   Tests against every combination of i(1-5) x m(1-5) x p (a handful of
+   representative sample points, since p isn't bounded to an integer 1-5
+   range like i/m — it's 1/N for whatever B-sibling count N a real node
+   might have), not just one sample point, since a formula can throw only
+   for particular inputs (e.g. dividing by m-3) and still compile/run fine
+   for others — real B nodes span the whole 1-5 range on i/m and can have
+   any sibling count, so anything that fails even one combination WOULD
+   eventually throw or misbehave for some real node. */
 function formulaIsValid(formula){
   try{
-    var fn = new Function('i','m', 'return ('+formula+');');
+    var fn = new Function('i','m','p', 'return ('+formula+');');
+    var pSamples = [1, 0.5, 1/3, 0.1, 0.01];
     for(var imp=1; imp<=5; imp++){
       for(var ml=1; ml<=5; ml++){
-        var w = fn(imp, ml);
-        if(!(typeof w==='number' && isFinite(w) && w>=0)) return false;
+        for(var pi=0; pi<pSamples.length; pi++){
+          var w = fn(imp, ml, pSamples[pi]);
+          if(!(typeof w==='number' && isFinite(w) && w>=0)) return false;
+        }
       }
     }
     return true;
@@ -2218,6 +2313,10 @@ function activateRandomButton(btn){
   var pick = pickRandomBNode(btn);
   if(!pick) return;
   pushUndo();
+  // "↩️按钮额外具有撤回跳转功能...随机选一按钮跳转...都和撤回⭕️🌈一样统一
+  // 合并处理撤回" — snapshotted BEFORE focusId/selectedId change below, so
+  // undoCompactAction restores the PRE-jump view, not the post-jump one.
+  pushCompactActionUndo();
   // "任何跳转功能(...随机选一)都会立即使得🖐️变回默认状态" — a random-pick
   // jump leaves whatever context 🖐️'s current speed/scroll/仅空B state
   // applied to, so it must not silently keep armed. No-op while already
@@ -4823,6 +4922,7 @@ var insertBorderLinesValueEl = document.getElementById('insertBorderLinesValue')
 var insertMasterLevelValueEl = document.getElementById('insertMasterLevelValue');
 var insertSizeValueEl = document.getElementById('insertSizeValue');
 var insertDeleteBtn = document.getElementById('insertDeleteBtn');
+var insertFavoriteBtn = document.getElementById('insertFavoriteBtn');
 var insertEnterBtn = document.getElementById('insertEnterBtn');
 var pendingInsert = null; // {kind, anchorId, dir, batch, editNode}
 var focusBeforeInsertDialog = null;
@@ -4835,6 +4935,7 @@ var pendingInsertMasterLevel = MASTER_LEVEL_DEFAULT;
 var pendingInsertColor = 0;
 var pendingInsertBorder = 'solid';
 var pendingInsertSizeMult = 1; // create-mode-only relative size multiplier, applied on top of makeNode's own defaults at commit time
+var pendingInsertFavorite = null; // create-mode-only "收藏状态": null/'S'/'2'
 
 /* refresh every one of the 6 attribute controls' displayed value/preview
    from whichever source (pendingInsert* vars in create mode, the node
@@ -4858,6 +4959,10 @@ function refreshInsertStatUI(){
   insertColorBtn.innerHTML = '<span class="id-color-swatch" style="background:'+sw+';border-color:'+bd+';"></span>';
   insertBorderStyleBtn.innerHTML = borderPreviewSvg(borderStyle);
   insertSizeValueEl.textContent = (editing ? scalarScaleFor(n) : pendingInsertSizeMult).toFixed(2)+'×';
+  var fav = editing ? (n.favorite||null) : pendingInsertFavorite;
+  insertFavoriteBtn.classList.remove('id-fav-s','id-fav-2');
+  if(fav==='S') insertFavoriteBtn.classList.add('id-fav-s');
+  else if(fav==='2') insertFavoriteBtn.classList.add('id-fav-2');
 }
 insertCatTypeBtn.addEventListener('click', function(){
   if(!pendingInsert) return;
@@ -4941,6 +5046,24 @@ document.getElementById('insertSizeStepper').addEventListener('click', function(
   }
   refreshInsertStatUI();
 });
+/* "S按钮...按动的时候循环切换S/2/关闭" — off→S→2→off, independent of the
+   node's category (unlike the S/2 random-pick buttons' own SCOPE, which is
+   filtered to category==='B' at pick time in randomButtonScopeBNodes —
+   toggling this on an A/C node just has no effect until/unless it later
+   becomes a B node). */
+insertFavoriteBtn.addEventListener('click', function(){
+  if(!pendingInsert) return;
+  function nextFav(cur){ return cur==null ? 'S' : (cur==='S' ? '2' : null); }
+  if(pendingInsert.mode==='edit'){
+    var n = pendingInsert.node;
+    pushUndo();
+    n.favorite = nextFav(n.favorite||null);
+    scheduleSave(); render();
+  } else {
+    pendingInsertFavorite = nextFav(pendingInsertFavorite);
+  }
+  refreshInsertStatUI();
+});
 
 function openInsertDialog(cfg){
   pendingInsert = cfg;
@@ -4958,6 +5081,7 @@ function openInsertDialog(cfg){
     pendingInsertColor = 0;
     pendingInsertBorder = 'solid';
     pendingInsertSizeMult = 1;
+    pendingInsertFavorite = null;
   }
   refreshInsertStatUI();
   insertOverlay.classList.add('show');
@@ -5060,6 +5184,7 @@ function commitInsertDialog(){
       newNode.masterLevel = pendingInsertMasterLevel;
       newNode.color = pendingInsertColor;
       newNode.border = pendingInsertBorder;
+      newNode.favorite = pendingInsertFavorite;
       if(pendingInsertSizeMult!==1){
         newNode.scaleXNoKids *= pendingInsertSizeMult; newNode.scaleYNoKids *= pendingInsertSizeMult;
         newNode.scaleXKids *= pendingInsertSizeMult; newNode.scaleYKids *= pendingInsertSizeMult;
@@ -6117,6 +6242,9 @@ function highlight(text, q){
 }
 var searchActiveIdx = -1;
 function commitSearchResult(n){
+  // "↩️按钮额外具有撤回跳转功能...从搜索框...点击跳转,都和撤回⭕️🌈一样统一
+  // 合并处理撤回" — snapshotted BEFORE state.focusId/selectedId change below.
+  pushCompactActionUndo();
   // "任何跳转功能(搜索...)都会立即使得🖐️变回默认状态" — same reset as
   // activateRandomButton's own call (see resetCompactDragModeIfActive's
   // doc comment).
@@ -6826,7 +6954,7 @@ function renderRandomPanel(){
     // ordinary activations in a row ("双击应该刷新两次,或者说没有双击功能,
     // 而不是重命名"); rename now lives ONLY in the right-click menu (see
     // openRbCtxMenu), for both materialized AND the global button.
-    name.title = btn.isGlobal ? '点击：随机展示 · 右键：重命名' : '点击：随机展示 · 右键：更多操作';
+    name.title = (btn.isGlobal || btn.isFixed) ? '点击：随机展示 · 右键：重命名' : '点击：随机展示 · 右键：更多操作';
     name.addEventListener('click', function(){ activateRandomButton(btn); });
     item.appendChild(name);
     var pool = randomButtonScopeBNodes(btn);
@@ -6922,13 +7050,21 @@ function openRbCtxMenu(x, y, btn){
     b.addEventListener('click', function(){ closeRbCtxMenu(); onClick(); });
     menu.appendChild(b);
   }
-  addItem('重命名', false, function(){
-    var next = prompt('重命名按钮', btn.name||'');
-    if(next!=null && next.trim()){ btn.name = next.trim(); scheduleSave(); renderRandomPanel(); }
-  });
+  // "长按不能删除也不能修改范围或者重命名" — unlike the global button
+  // (which still allows rename), the two fixed S/2 buttons get NONE of
+  // the three options; this menu ends up empty for them (attachRbLongPress
+  // already refuses to attach to them at all — see its own isFixed guard —
+  // so this only matters for the desktop panel-list's own right-click,
+  // which reuses this same function).
+  if(!btn.isFixed){
+    addItem('重命名', false, function(){
+      var next = prompt('重命名按钮', btn.name||'');
+      if(next!=null && next.trim()){ btn.name = next.trim(); scheduleSave(); renderRandomPanel(); }
+    });
+  }
   // the global button can be renamed but never re-scoped or deleted —
   // "全局按钮只是不允许删除和重新划分范围而已" (rename explicitly allowed).
-  if(!btn.isGlobal){
+  if(!btn.isGlobal && !btn.isFixed){
     addItem('重新划分范围', false, function(){ openRbMaterializeDialog(btn); });
     addItem('删除', true, function(){
       if(confirm('删除按钮"'+(btn.name||'未命名')+'"？')){
@@ -6962,7 +7098,7 @@ function openRbCtxMenu(x, y, btn){
    the collapse/expand click listener so its own click-suppression runs
    first"). */
 function attachRbLongPress(el, btn){
-  if(btn.isGlobal) return;
+  if(btn.isGlobal || btn.isFixed) return;
   var timer = null, fired = false;
   function clear(){ if(timer){ clearTimeout(timer); timer = null; } }
   el.addEventListener('mousedown', function(ev){
@@ -7512,7 +7648,7 @@ document.getElementById('btnResetVisibleSizes').addEventListener('click', functi
   // root's own (currently invisible) ancestors. No confirmation dialog —
   // scope is strictly local, same as before.
   pushUndo();
-  pushResetRandomUndo(); // "撤回...⭕️和/或🌈操作" — see its own doc comment
+  pushCompactActionUndo(); // "撤回...⭕️和/或🌈操作" — see its own doc comment
   var focusId = state.focusId;
   var kidIds = children(focusId).map(function(k){ return k.id; });
   resetNodeSizes([focusId].concat(kidIds));
@@ -7564,7 +7700,7 @@ document.getElementById('btnResetVisibleSizes').addEventListener('click', functi
    scaleXNoKids/scaleYNoKids/scaleXKids/scaleYKids are never touched. */
 function randomizeVisibleChildrenStyle(){
   pushUndo();
-  pushResetRandomUndo(); // "撤回...⭕️和/或🌈操作" — see its own doc comment
+  pushCompactActionUndo(); // "撤回...⭕️和/或🌈操作" — see its own doc comment
   var kids = children(state.focusId);
   if(!kids.length) return;
   kids.forEach(function(k){
@@ -7882,6 +8018,7 @@ function validateImportSchema(s){
     if(BORDER_STYLES.indexOf(n.border)===-1) return 'node '+id+' has invalid border style';
     if(typeof n.borderLines!=='number') return 'node '+id+' missing borderLines';
     if(typeof n.masterLevel!=='number') return 'node '+id+' missing masterLevel';
+    if(n.favorite!==null && n.favorite!=='S' && n.favorite!=='2') return 'node '+id+' has invalid favorite state';
     if(typeof n.vis!=='number') return 'node '+id+' missing vis';
   }
   if(!Array.isArray(s.randomButtons)) return 'missing randomButtons array';
@@ -8363,6 +8500,19 @@ document.getElementById('cbAddToInbox').addEventListener('click', function(){
 document.getElementById('cbMakeRoot').addEventListener('click', function(){
   var n = currentSelectedNode();
   if(!n) return;
+  // "在已经全屏了一个节点以后,如果再按一次,目前是没有功能的,新增功能,
+  // 打开信息编辑窗口,就好像长按一样。其他时候功能不变" — pressing 🟧 while
+  // n is ALREADY the current focus root would otherwise be a pure no-op
+  // (n.drilled/state.focusId/selectedId all already at their target
+  // values, nothing for scheduleSave/render to actually change) — that
+  // dead press now opens the same unified edit dialog a long-press on
+  // this node would (openInsertDialog's own mode:'edit'), instead of just
+  // silently doing nothing. Every other case (n isn't yet the focus root)
+  // is completely unchanged.
+  if(n.id===state.focusId){
+    openInsertDialog({mode:'edit', node:n});
+    return;
+  }
   pushUndo();
   n.drilled = true;
   state.focusId = n.id;
@@ -8501,7 +8651,7 @@ document.getElementById('cbCenterVisibleChildren').addEventListener('click', fun
 });
 document.getElementById('cbResetVisibleSizes').addEventListener('click', function(){ document.getElementById('btnResetVisibleSizes').click(); });
 document.getElementById('cbRandomizeVisibleStyle').addEventListener('click', randomizeVisibleChildrenStyle);
-document.getElementById('cbResetRandomUndo').addEventListener('click', undoResetRandom);
+document.getElementById('cbResetRandomUndo').addEventListener('click', undoCompactAction);
 document.getElementById('cbMoreDesktop').addEventListener('click', function(){
   appParams.uiMode = 'desktop'; applyUiMode('desktop'); saveParams();
 });
@@ -8856,6 +9006,10 @@ function renderCompactTreeView(){
       // reset as activateRandomButton's own call.
       if(typeof resetCompactDragModeIfActive==='function') resetCompactDragModeIfActive();
       pushUndo();
+      // "↩️按钮额外具有撤回跳转功能...tree view点击跳转,都和撤回⭕️🌈一样
+      // 统一合并处理撤回" — snapshotted BEFORE state.focusId/selectedId
+      // change below.
+      pushCompactActionUndo();
       n.drilled = true;
       state.focusId = id;
       collapseBeyondDepth(id, appParams.maxAutoDepth);
