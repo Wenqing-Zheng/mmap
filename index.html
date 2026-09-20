@@ -190,6 +190,16 @@
     white-space:normal;word-break:break-all;line-height:1.15;text-align:center;
     padding:2px;overflow:hidden;
   }
+  /* "全局/S/2三个随机选一按钮改成只占用一个空位...显示为...当中的某一个,
+     直到长按/右键选择了另一个,才显示为另一个" — .rb-cycle-btn is the ONE
+     slot the 3 buttons used to occupy combined; it always displays
+     whichever fixed button is currently "active" (see rbFixedActiveId),
+     and a plain click/tap just USES that one — switching which one is
+     active requires the small menu opened via long-press (mobile) or
+     right-click (desktop), reusing openRbCtxMenu's own positioning idiom
+     (fixed-position, appended to document.body, positioned off the
+     trigger's own getBoundingClientRect()) rather than a child of
+     #railPinnedZone, since that zone has no overflow:visible guarantee. */
   #fileInput{display:none;}
   #railResizer{
     position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:ew-resize;z-index:520;
@@ -600,7 +610,26 @@
     font-weight:700;padding:3px 10px;border-radius:9px;display:none;letter-spacing:.3px;
   }
   #insertBatchBadge.show{display:block;}
-  #insertDialog .id-label{font-size:11px;color:var(--text-dim);font-weight:600;margin-bottom:6px;letter-spacing:.4px;}
+  #insertDialog .id-label{font-size:11px;color:var(--text-dim);font-weight:600;letter-spacing:.4px;}
+  /* label row now holds the label text AND the copy button on the same
+     line, right-aligned — "summary和detail框的右上角放一个复制按钮". The
+     row itself carries the margin-bottom the bare label used to have. */
+  .id-label-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .id-copy-btn{
+    border:none;background:transparent;color:var(--text-dim);cursor:pointer;
+    width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;touch-action:manipulation;
+  }
+  .id-copy-btn:hover{background:rgba(120,130,160,.14);color:var(--text-main);}
+  /* "成功后打勾" — swap the copy-icon svg for a checkmark svg for a beat,
+     mirroring the AI-chat "copied" affordance, then swap back (see the
+     copy handler's own setTimeout). .copied toggles which of the two
+     always-present svgs is visible rather than replacing innerHTML, so a
+     rapid double-click can't get the button stuck mid-swap on a half-
+     written string. */
+  .id-copy-btn.copied{color:#2ea88a;}
+  .id-copy-btn.copied .id-copy-icon{display:none;}
+  .id-copy-btn.copied .id-copy-check{display:block!important;}
   /* Summary now wraps normally (not the old single-line nowrap+
      horizontal-scroll) and caps at ~5 lines before scrolling vertically —
      "summary较小...最多五行以后开始滚动". max-height is derived from the
@@ -657,9 +686,14 @@
   /* "S按钮...默认背景透明,关闭,按动的时候循环切换S/2/关闭,S和2状态下按钮
      颜色分别是红色,绿色" — .id-btn.plain's own background is the "关闭"
      state (transparent-ish gray), so only the two ON states need their own
-     override classes here. */
-  .id-fav-s{background:#d1495b;color:#fff;}
-  .id-fav-2{background:#3ea36b;color:#fff;}
+     override classes here. Selector MUST include .id-btn (not just
+     .id-fav-s/.id-fav-2 alone) to match .id-btn.plain's own specificity —
+     the button's class attribute keeps "plain" even while toggled on (the
+     JS only ever ADDS id-fav-s/id-fav-2, never removes "plain"), so a
+     lower-specificity override here would silently lose to .id-btn.plain's
+     background and the button would look like it's not responding at all. */
+  .id-btn.id-fav-s{background:#d1495b;color:#fff;}
+  .id-btn.id-fav-2{background:#3ea36b;color:#fff;}
 
   /* 手机精致模式's own edit-dialog re-layout: full-bleed page instead of a
      floating centered card — "不要像电脑那样悬浮弹窗，而是直接手机全屏用
@@ -706,7 +740,7 @@
      instead (or as well), squeezing the very row this is trying to keep
      visible. */
   html.mobile-compact-mode #insertDetail{flex:0 1 auto;min-height:0;max-height:none;margin-bottom:8px;font-size:16px;}
-  html.mobile-compact-mode #insertDialog .id-label{flex-shrink:0;}
+  html.mobile-compact-mode #insertDialog .id-label-row{flex-shrink:0;}
   html.mobile-compact-mode .id-attr-grid{margin-bottom:8px;flex-shrink:0;}
   html.mobile-compact-mode #insertActionsRow{flex-shrink:0;}
 
@@ -1517,9 +1551,9 @@
 <div id="insertOverlay">
   <div id="insertDialog">
     <span id="insertBatchBadge">连续插入中 · ⌘Enter 插入下一个 · Esc 结束</span>
-    <div class="id-label">Summary</div>
+    <div class="id-label-row"><span class="id-label">Summary</span><button class="id-copy-btn" id="insertSummaryCopyBtn" title="复制Summary" data-target="insertSummary"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="id-copy-icon"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h9"/></svg><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="id-copy-check" style="display:none"><polyline points="4 12 9 17 20 6"/></svg></button></div>
     <div id="insertSummary" contenteditable="true" data-ph="节点摘要…"></div>
-    <div class="id-label">Detail</div>
+    <div class="id-label-row"><span class="id-label">Detail</span><button class="id-copy-btn" id="insertDetailCopyBtn" title="复制Detail" data-target="insertDetail"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="id-copy-icon"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h9"/></svg><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="id-copy-check" style="display:none"><polyline points="4 12 9 17 20 6"/></svg></button></div>
     <div id="insertDetail" contenteditable="true" data-ph="节点详情…"></div>
     <div class="id-attr-grid">
       <div class="id-stat-col">
@@ -4937,6 +4971,49 @@ var pendingInsertBorder = 'solid';
 var pendingInsertSizeMult = 1; // create-mode-only relative size multiplier, applied on top of makeNode's own defaults at commit time
 var pendingInsertFavorite = null; // create-mode-only "收藏状态": null/'S'/'2'
 
+/* Summary/Detail copy-to-clipboard buttons — "手机端支持触摸复制内容到
+   剪贴板(电脑版是左键单击)". A plain 'click' listener already fires for
+   BOTH a mouse click AND a tap's synthesized click on every mobile
+   browser, so no separate touch handling is needed here (unlike
+   attachRbLongPress elsewhere, which needed real touch events because it
+   cares about the HOLD, not just the eventual tap). navigator.clipboard
+   requires a secure context (https/localhost) — falls back to the older
+   execCommand('copy') via a throwaway selection range so this still works
+   when the app is served over plain http. */
+function copyElementText(el){
+  var text = richToPlain(el.innerHTML);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(text).catch(function(){ return copyTextFallback(text); });
+  }
+  return Promise.resolve(copyTextFallback(text));
+}
+function copyTextFallback(text){
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+}
+[['insertSummaryCopyBtn', insertSummaryEl], ['insertDetailCopyBtn', insertDetailEl]].forEach(function(pair){
+  var btn = document.getElementById(pair[0]), target = pair[1];
+  var flashTimer = null;
+  btn.addEventListener('click', function(ev){
+    ev.preventDefault();
+    copyElementText(target);
+    // "成功后打勾" — same swap-then-revert affordance as an AI chat
+    // window's own copy button. clearTimeout guards a rapid double-tap
+    // from having the FIRST tap's revert fire after the SECOND tap's
+    // checkmark, which would otherwise flash back to the plain icon too
+    // early mid-way through the second confirmation.
+    if(flashTimer) clearTimeout(flashTimer);
+    btn.classList.add('copied');
+    flashTimer = setTimeout(function(){ btn.classList.remove('copied'); flashTimer=null; }, 1400);
+  });
+});
+
 /* refresh every one of the 6 attribute controls' displayed value/preview
    from whichever source (pendingInsert* vars in create mode, the node
    itself in edit mode) is currently authoritative — called after EVERY
@@ -6991,10 +7068,11 @@ function renderRandomPanel(){
    不需要再拖拽过去" replaces the old drag-to-pin/pinnedToRail mechanism
    entirely (a button used to only show up here after being dragged onto
    the rail — now every one always does, with no separate "hidden until
-   dragged" state to track or persist). The global button is deliberately
-   excluded — it already has its own permanent entry point (btnRandom's
-   own rail icon), so showing it a second time here would just duplicate
-   it. Clicking activates the button exactly like clicking its panel-list
+   dragged" state to track or persist). The two fixed buttons (全局/S/2)
+   share ONE slot via renderRbCycleBtn instead of each getting their own —
+   see that function's own comment for how switching between them works.
+   Custom materialized buttons still render individually exactly as
+   before. Clicking one activates it exactly like clicking its panel-list
    entry does; long-press (mirroring 手机精致模式's own tag/row long-press
    pattern elsewhere in this file) opens the SAME rename/重新划分范围/删除
    menu the desktop panel-list's own right-click already opens — "长按提示
@@ -7005,7 +7083,8 @@ function renderRandomPanel(){
    point. */
 function renderRailPinnedZone(){
   railPinnedZone.innerHTML = '';
-  (state.randomButtons||[]).filter(function(b){ return !b.isGlobal; }).forEach(function(btn){
+  railPinnedZone.appendChild(renderRbCycleBtn('rail-btn rail-pinned'));
+  (state.randomButtons||[]).filter(function(b){ return !b.isGlobal && !b.isFixed; }).forEach(function(btn){
     var b = document.createElement('button');
     b.className = 'rail-btn rail-pinned';
     b.textContent = (btn.name||'?').slice(0,6);
@@ -7028,6 +7107,137 @@ function renderRailPinnedZone(){
   // needs the compact bar's mirrored copy refreshed, so piggybacking here
   // covers all of them without a separate call at each site.
   if(typeof renderCompactRandomZone==='function') renderCompactRandomZone();
+}
+/* the id of whichever fixed button (全局/S/2) the shared cycle-button
+   currently displays/activates — "按钮不要显示1,而是显示为...当中的某
+   一个,直到长按/右键选择了另一个,才显示为另一个,这样就可以连续多次按S
+   或者2而不需要每次都长按". Not persisted across reloads (an in-memory
+   default is enough — always starts back on the global button, same as
+   this app's own "act like the global button was just pressed" load-time
+   behavior elsewhere). Reassigned lazily the first time renderRbCycleBtn
+   runs, once state.randomButtons is guaranteed to exist. */
+var rbFixedActiveId = null;
+function rbFixedActiveButton(){
+  var fixed = (state.randomButtons||[]).filter(function(b){ return b.isGlobal || b.isFixed; });
+  var cur = fixed.filter(function(b){ return b.id===rbFixedActiveId; })[0];
+  if(cur) return cur;
+  // first run, or the previously-active button got deleted somehow (fixed
+  // buttons never actually get a delete option, but defend anyway) — fall
+  // back to the global button, which sanitizeRandomButtons guarantees
+  // always exists.
+  var g = fixed.filter(function(b){ return b.isGlobal; })[0] || fixed[0];
+  rbFixedActiveId = g ? g.id : null;
+  return g;
+}
+/* the shared "全局/S/2" cycle button: a plain click/tap always just USES
+   whichever one is currently active ("左键单击和手机端短按,效果都是使用
+   一次当前显示的按钮的功能") — switching which one is active requires the
+   small picker menu opened via long-press (mobile) or right-click
+   (desktop), so repeatedly using the SAME one (e.g. mashing S several
+   times in a row) never needs a long-press in between. btnClass matches
+   whichever zone this renders into (desktop rail vs compact bar), same as
+   every other button already rendered there. */
+function renderRbCycleBtn(btnClass){
+  var trigger = document.createElement('button');
+  trigger.className = btnClass;
+  function refresh(){
+    var active = rbFixedActiveButton();
+    trigger.textContent = active ? active.name : '?';
+    trigger.title = '点击：随机展示 · 长按/右键：切换 全局/S/2';
+  }
+  refresh();
+  trigger.addEventListener('click', function(ev){
+    if(trigger._suppressClick){ trigger._suppressClick = false; return; }
+    var active = rbFixedActiveButton();
+    if(active) activateRandomButton(active);
+  });
+  trigger.addEventListener('contextmenu', function(ev){
+    ev.preventDefault();
+    openRbFixedSwitchMenu(ev.clientX, ev.clientY, trigger, refresh);
+  });
+  var timer = null;
+  trigger.addEventListener('mousedown', function(ev){
+    var x = ev.clientX, y = ev.clientY;
+    timer = setTimeout(function(){
+      trigger._suppressClick = true;
+      openRbFixedSwitchMenu(x, y, trigger, refresh);
+    }, LONG_PRESS_MS);
+  });
+  function clearTimer(){ if(timer){ clearTimeout(timer); timer = null; } }
+  trigger.addEventListener('mouseup', clearTimer);
+  trigger.addEventListener('mouseleave', clearTimer);
+  // same native touch long-press bridge attachRbLongPress uses elsewhere
+  // in this file (see its own doc comment for why a mousedown-based timer
+  // never even starts on a real touch) — a real finger slide before the
+  // timer fires cancels it (scroll/drag attempt, not a long-press).
+  var tStartX=0, tStartY=0, tMoved=false, tFired=false;
+  trigger.addEventListener('touchstart', function(ev){
+    if(ev.touches.length!==1) return;
+    var t = ev.touches[0];
+    tStartX = t.clientX; tStartY = t.clientY; tMoved = false; tFired = false;
+    timer = setTimeout(function(){
+      tFired = true;
+      trigger._suppressClick = true;
+      openRbFixedSwitchMenu(t.clientX, t.clientY, trigger, refresh);
+    }, LONG_PRESS_MS);
+  }, {passive:true});
+  trigger.addEventListener('touchmove', function(ev){
+    if(tMoved || !ev.touches.length) return;
+    var t = ev.touches[0];
+    if(Math.abs(t.clientX-tStartX)+Math.abs(t.clientY-tStartY)>10){
+      tMoved = true;
+      clearTimer();
+    }
+  }, {passive:true});
+  trigger.addEventListener('touchend', function(ev){
+    clearTimer();
+    if(tFired) ev.preventDefault();
+  });
+  trigger.addEventListener('touchcancel', clearTimer);
+  trigger._rbCycleRefresh = refresh;
+  return trigger;
+}
+var rbFixedSwitchMenuEl = null;
+function closeRbFixedSwitchMenu(){
+  if(rbFixedSwitchMenuEl){ rbFixedSwitchMenuEl.remove(); rbFixedSwitchMenuEl = null; }
+  document.removeEventListener('mousedown', closeRbFixedSwitchMenuOnce, {capture:true});
+}
+function closeRbFixedSwitchMenuOnce(e){
+  if(!e.target.closest('.ctx-menu')) closeRbFixedSwitchMenu();
+}
+/* small picker listing 全局/S/2 — picking one just changes which button
+   the shared cycle trigger displays/activates from now on; it does NOT
+   itself activate/random-pick (that's what a plain click on the trigger
+   is for). Reuses .ctx-menu/.ctx-menu-item styling, same as
+   openRbCtxMenu/openTreeDeleteMenu elsewhere in this file. */
+function openRbFixedSwitchMenu(x, y, trigger, onPicked){
+  closeRbFixedSwitchMenu();
+  var menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
+  (state.randomButtons||[]).filter(function(b){ return b.isGlobal || b.isFixed; }).forEach(function(btn){
+    var b = document.createElement('button');
+    b.className = 'ctx-menu-item';
+    b.textContent = btn.name||'?';
+    b.addEventListener('click', function(){
+      closeRbFixedSwitchMenu();
+      rbFixedActiveId = btn.id;
+      onPicked();
+      // keep every OTHER rendered copy of the cycle button (rail vs
+      // compact bar both exist in the DOM at once) in sync too, not just
+      // the one that was actually long-pressed/right-clicked.
+      document.querySelectorAll('.rail-btn.rail-pinned, .compact-rb-btn').forEach(function(el){
+        if(el!==trigger && el._rbCycleRefresh) el._rbCycleRefresh();
+      });
+    });
+    menu.appendChild(b);
+  });
+  document.body.appendChild(menu);
+  var mr = menu.getBoundingClientRect();
+  menu.style.left = Math.min(x, window.innerWidth-mr.width-10)+'px';
+  menu.style.top = Math.min(y, window.innerHeight-mr.height-10)+'px';
+  rbFixedSwitchMenuEl = menu;
+  setTimeout(function(){ document.addEventListener('mousedown', closeRbFixedSwitchMenuOnce, {capture:true}); }, 0);
 }
 /* right-click context menu on a materialized (non-global) random-pick
    button: rename / re-scope (re-open the tree picker pre-filled with this
@@ -7973,7 +8183,7 @@ document.getElementById('btnExport').addEventListener('click', function(){
   var blob = new Blob([JSON.stringify(out,null,2)], {type:'application/json'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
-  a.href = url; a.download = 'mindmap-'+state.rootId+'.json';
+  a.href = url; a.download = 'a.json';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
 });
@@ -9251,10 +9461,13 @@ compactRelaxSliderEl.addEventListener('input', function(){
 /* random-pick buttons, mirrored into the compact bar's own first-class
    zone — "每个随机选一都是一个独立的一等公民按钮". Re-rendered any time
    the underlying button set could have changed, same trigger points
-   renderRailPinnedZone already uses. */
+   renderRailPinnedZone already uses. The two fixed buttons (全局/S/2)
+   share ONE slot via the same renderRbCycleBtn renderRailPinnedZone
+   uses — "在电脑版和精致手机版同时修改". */
 function renderCompactRandomZone(){
   compactRandomZoneEl.innerHTML = '';
-  (state.randomButtons||[]).forEach(function(btn){
+  compactRandomZoneEl.appendChild(renderRbCycleBtn('compact-rb-btn'));
+  (state.randomButtons||[]).filter(function(b){ return !b.isGlobal && !b.isFixed; }).forEach(function(btn){
     var b = document.createElement('button');
     b.className = 'compact-rb-btn';
     b.textContent = btn.name||'?';
