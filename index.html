@@ -7123,9 +7123,11 @@ function rbFixedActiveButton(){
   if(cur) return cur;
   // first run, or the previously-active button got deleted somehow (fixed
   // buttons never actually get a delete option, but defend anyway) — fall
-  // back to the global button, which sanitizeRandomButtons guarantees
-  // always exists.
-  var g = fixed.filter(function(b){ return b.isGlobal; })[0] || fixed[0];
+  // back to the global button specifically, which sanitizeRandomButtons
+  // guarantees always exists; NEVER fall through to fixed[0] (which would
+  // silently be S the moment isGlobal ever came back falsy/missing on a
+  // stale or hand-edited state — "每次刷新页面,默认走S而不是全局").
+  var g = fixed.filter(function(b){ return b.isGlobal; })[0];
   rbFixedActiveId = g ? g.id : null;
   return g;
 }
@@ -9494,20 +9496,27 @@ applyTheme();
 // comment) must be visible from the very first render, not just after
 // the user happens to open the 随机选一 panel once — that panel's own
 // renderRandomPanel() is the only other call site that refreshes this.
+// "每次刷新页面,默认改成走S" — pin the shared 全局/S/2 cycle button (see
+// renderRbCycleBtn) to the S fixed button BEFORE it first renders below,
+// and fire that same S pick on load instead of the global button's own —
+// rbFixedActiveId defaults to null on every fresh load (never persisted),
+// so without this explicit pin the cycle button would lazily self-default
+// to the global button via rbFixedActiveButton()'s own fallback.
+var sRandomBtn = (state.randomButtons||[]).filter(function(b){ return b.isFixed && b.favKey==='S'; })[0];
+if(sRandomBtn) rbFixedActiveId = sRandomBtn.id;
 renderRailPinnedZone();
 render();
-// on every fresh load/refresh, act as if the user pressed the global
+// on every fresh load/refresh, act as if the user pressed the S
 // 随机选一 button and then immediately pressed Esc — a random B node
 // becomes the focus root (filling the screen), nothing selected, no rail
 // panel open and no nav button focused — "不是要打开随机选一那个panel,
-// 而是什么panel都不打开,但是就好像按了一遍全局的随机选一按钮紧接着按了
+// 而是什么panel都不打开,但是就好像按了一遍S的随机选一按钮紧接着按了
 // Esc一样". activateRandomButton() already leaves selectedId null and
 // closeAllRailPanels()/clearSizeGauge() cover the rest of what a real Esc
 // press would otherwise need to clear (nothing here, since no panel/gauge
 // is active yet at page-load time, but calling them keeps this in lockstep
 // with the real Esc handler instead of duplicating its assumptions).
-var globalRandomBtn = (state.randomButtons||[]).filter(function(b){ return b.isGlobal; })[0];
-if(globalRandomBtn) activateRandomButton(globalRandomBtn);
+if(sRandomBtn) activateRandomButton(sRandomBtn);
 closeAllRailPanels();
 
 /* "拖拽出来最底下的公式编辑框,单击编辑,就会在编辑框下面进一步弹出搜索框
