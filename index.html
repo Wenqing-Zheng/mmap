@@ -719,6 +719,24 @@
      from the desktop dialog's 14px/13px) keeps focus from ever
      triggering that zoom in the first place. */
   html.mobile-compact-mode #insertSummary{margin-bottom:8px;max-height:30vh;font-size:16px;flex-shrink:0;}
+  /* "在detail有内容的时候继续保持不允许summary变高,但当detail没有内容的
+     时候,summary更长更多换行的时候也可以让文本框变高直到撑满屏幕" —
+     #insertDialog.detail-empty (toggled by refreshSummaryGrowState,
+     called on every detail edit) lifts #insertSummary's own 30vh cap
+     entirely; flex:1 1 auto then lets it claim as much of the dialog's
+     remaining vertical space as its own content needs, up to the whole
+     dialog — #insertDetail stays flex:0 1 auto (see its own rule below)
+     so it never competes for that space, and #insertActionsRow's own
+     margin-top:auto (see its rule) still pins the button row to the
+     bottom the instant summary's growth leaves any room to spare.
+     max-height:none only while ALSO detail-empty — the instant real
+     detail text gets typed back in, this class comes off and the plain
+     30vh cap above re-applies immediately (no separate "shrink back"
+     transition needed; the flex layout just recomputes on the next
+     render/DOM-mutation like every other size change already does here). */
+  html.mobile-compact-mode #insertDialog.detail-empty #insertSummary{
+    max-height:none;flex:1 1 auto;
+  }
   /* "detail文字不多的时候,继续保持当前layout,当文字很多...优先纵向撑大
      detail编辑框,直到底下确认取消按钮被撑到接近屏幕底端,再进入滚动模式.
      但是summary不允许变大,直接进入滚动模式(目前就是对的)" — the OLD
@@ -742,7 +760,18 @@
   html.mobile-compact-mode #insertDetail{flex:0 1 auto;min-height:0;max-height:none;margin-bottom:8px;font-size:16px;}
   html.mobile-compact-mode #insertDialog .id-label-row{flex-shrink:0;}
   html.mobile-compact-mode .id-attr-grid{margin-bottom:8px;flex-shrink:0;}
-  html.mobile-compact-mode #insertActionsRow{flex-shrink:0;}
+  /* "确认取消删除等等一排按钮全部永远固定在信息编辑窗口可见区域的最下方,
+     而不是只有文字很长的时候才被推到最下方" — margin-top:auto on a flex
+     COLUMN child consumes all remaining free space ABOVE it, pinning it to
+     the end of the main axis regardless of how little the sibling content
+     above actually needs; previously this row just sat wherever the
+     natural content flow left it (right after the attr-grid), which only
+     happened to reach the bottom when detail's own text was long enough to
+     push it there. When total content is instead taller than the
+     100dvh viewport, there's no free space left to consume, so this has
+     no effect and #insertDialog's own overflow-y:auto scrolling (see its
+     own rule above) still applies exactly as before. */
+  html.mobile-compact-mode #insertActionsRow{flex-shrink:0;margin-top:auto;}
 
   /* ---------- mobile mode: bottom nav bar + bottom-sheet flyouts ----------
      Everything below is gated under html.mobile-mode (toggled by
@@ -989,6 +1018,12 @@
      override is currently forcing a non-default view"), armed by
      compactShowAllMode's own click handler, see refreshCompactShowAllUI. */
   .compact-btn.cb-showall-active{background:#d1495b;color:#fff;border-color:#d1495b;}
+  /* ✳️/🫥 merged button's own long-press-switched state — "✳️长按切换为
+     🫥" gets the same visual-state-without-reading-the-tooltip treatment
+     as every other mode toggle here, reusing this file's own established
+     "non-default mode = tinted background" convention rather than relying
+     on the glyph swap alone. */
+  .compact-btn.cb-inbox-empty-mode{background:#5b8dff;color:#fff;border-color:#5b8dff;}
   /* search+tree cluster: "tree view按钮放在搜索按钮正下方" — same
      stacked-pair pattern as .compact-nav-cluster's own up/down pairing,
      just a single column instead of nav-cluster's extra spanning-column
@@ -1383,7 +1418,7 @@
         <button class="compact-btn" id="cbNavSibling" title="循环跳转到下一个兄弟节点">➡️</button>
       </div>
       <div class="compact-stack-cluster">
-        <button class="compact-btn" id="cbMakeRoot" title="以最近选中的节点为根节点视图（等价双击）">🟧</button>
+        <button class="compact-btn" id="cbMakeRoot" title="打开当前可见区域根节点的信息编辑窗口">🟧</button>
         <button class="compact-btn" id="cbCenterVisibleChildren" title="临时全揽显示：强制缩放到所有一级子节点同时可见（再按一次或跳转到其他根节点即取消）">🎯</button>
       </div>
       <div class="compact-stack-cluster">
@@ -2200,8 +2235,24 @@ function subtreeIds(id, out){
    entirely — not checkedIds/subtree membership at all, but every B node
    anywhere whose own n.favorite field equals btn.favKey (see
    fixedFavoriteButton) — a node opts into S/2's pool individually via the
-   insert-dialog's S toggle, independent of where it lives in the tree. */
+   insert-dialog's S toggle, independent of where it lives in the tree.
+   btn.isEmptyOrInbox (see cbInboxRandomButton) is a THIRD, similarly
+   independent rule — 手机精致模式's own ✳️/🫥 merged button's dedicated
+   scope: 全域"没有孩子且无detail"的B节点 UNION "未归纳" 容器节点下面的全部
+   B类子节点 — "全域空 B 并集 未归纳子节点". Deliberately NEVER reads
+   appParams.onlyEmptyBNodes (this is now its own fixed rule, independent
+   of that global flag — see COMPACT_DRAG_SPEEDS' own doc comment for why
+   the 🫥 cycle-state that used to flip that flag was removed). */
 function randomButtonScopeBNodes(btn){
+  if(btn.isEmptyOrInbox){
+    var inbox = children(state.rootId).filter(function(k){ return richToPlain(k.summary)==='未归纳'; })[0];
+    var inboxBIds = inbox ? subtreeIds(inbox.id) : [];
+    return Object.keys(state.nodes).map(node).filter(function(n){
+      if(!n || n.category!=='B') return false;
+      var isEmpty = children(n.id).length===0 && richToPlain(n.detail||'').length===0;
+      return isEmpty || inboxBIds.indexOf(n.id)!==-1;
+    });
+  }
   if(btn.isFixed){
     return Object.keys(state.nodes).map(node).filter(function(n){
       if(!n || n.category!=='B' || n.favorite!==btn.favKey) return false;
@@ -2352,7 +2403,7 @@ function activateRandomButton(btn){
   // undoCompactAction restores the PRE-jump view, not the post-jump one.
   pushCompactActionUndo();
   // "任何跳转功能(...随机选一)都会立即使得🖐️变回默认状态" — a random-pick
-  // jump leaves whatever context 🖐️'s current speed/scroll/仅空B state
+  // jump leaves whatever context 🖐️'s current speed/scroll state
   // applied to, so it must not silently keep armed. No-op while already
   // 'off'. Defined further below (hoisted function declaration).
   if(typeof resetCompactDragModeIfActive==='function') resetCompactDragModeIfActive();
@@ -5197,10 +5248,30 @@ function openInsertDialog(cfg){
   } else {
     setTimeout(function(){ insertSummaryEl.focus(); }, 0);
   }
+  refreshSummaryGrowState();
+}
+/* toggles #insertDialog's own .detail-empty class (see its CSS rule) —
+   "detail有内容的时候继续保持不允许summary变高,但detail没有内容的时候,
+   summary...也可以让文本框变高直到撑满屏幕". Only meaningful in compact
+   mode (desktop's #insertSummary has no such height cap to relax in the
+   first place), but harmless to toggle unconditionally elsewhere too since
+   the CSS rule itself is scoped under html.mobile-compact-mode. Called
+   once when the dialog opens AND on every keystroke in #insertDetail (see
+   its own input listener) — typing detail text back in after a leaf-node
+   summary had grown tall must shrink summary back down immediately, not
+   just the next time the dialog happens to reopen. */
+function refreshSummaryGrowState(){
+  insertDialog.classList.toggle('detail-empty', richToPlain(insertDetailEl.innerHTML).trim().length===0);
 }
 function closeInsertDialog(){
   insertOverlay.classList.remove('show');
   pendingInsert = null;
+  // the window-level scroll listener further below deliberately allows
+  // drift WHILE this dialog is open (see its own comment) — snap it back
+  // to (0,0) the moment the dialog closes so nothing lingers into the
+  // underlying canvas/panels once the dialog's own covering background is
+  // gone too.
+  if(window.scrollX!==0 || window.scrollY!==0) window.scrollTo(0, 0);
   // restore focus to whatever had it before the dialog opened (e.g. a tree
   // row, so arrow-key nav there keeps working) instead of letting the
   // browser drop focus to <body> once the focused input hides. Wrapped in
@@ -5390,6 +5461,13 @@ insertOverlay.addEventListener('mousedown', function(e){ if(e.target===insertOve
     if(e.key==='Enter'){ e.preventDefault(); document.execCommand('insertLineBreak'); return; }
   });
 });
+// "detail没有内容的时候,summary...可以撑满屏幕" must react to EVERY detail
+// edit live, not just re-check when the dialog happens to reopen — typing
+// the first character back into an empty detail immediately caps summary
+// back down, and clearing detail back to empty immediately relaxes it
+// again. Summary's own edits never affect this class, so only detail gets
+// this listener.
+insertDetailEl.addEventListener('input', refreshSummaryGrowState);
 
 /* ============================================================
    keyboard: navigation, insert shortcuts, zoom, bold
@@ -7110,8 +7188,8 @@ function renderRailPinnedZone(){
 }
 /* the id of whichever fixed button (全局/S/2) the shared cycle-button
    currently displays/activates — "按钮不要显示1,而是显示为...当中的某
-   一个,直到长按/右键选择了另一个,才显示为另一个,这样就可以连续多次按S
-   或者2而不需要每次都长按". Not persisted across reloads (an in-memory
+   一个,直到长按切换了另一个,才显示为另一个,这样就可以连续多次按S或者2
+   而不需要每次都长按". Not persisted across reloads (an in-memory
    default is enough — always starts back on the global button, same as
    this app's own "act like the global button was just pressed" load-time
    behavior elsewhere). Reassigned lazily the first time renderRbCycleBtn
@@ -7131,21 +7209,38 @@ function rbFixedActiveButton(){
   rbFixedActiveId = g ? g.id : null;
   return g;
 }
+/* advances rbFixedActiveId to the NEXT fixed button in state.randomButtons'
+   own order (全局→S→2→全局→...), wrapping around — "长按全局/s/2功能变成
+   直接循环切换按钮功能,而不是长按选择". Syncs every OTHER rendered copy
+   of the cycle button too (rail vs compact bar both exist in the DOM at
+   once), not just the one that was actually long-pressed. */
+function cycleRbFixedActive(trigger, onRefreshed){
+  var fixed = (state.randomButtons||[]).filter(function(b){ return b.isGlobal || b.isFixed; });
+  if(!fixed.length) return;
+  var idx = fixed.findIndex(function(b){ return b.id===rbFixedActiveId; });
+  rbFixedActiveId = fixed[(idx+1) % fixed.length].id;
+  onRefreshed();
+  document.querySelectorAll('.rail-btn.rail-pinned, .compact-rb-btn').forEach(function(el){
+    if(el!==trigger && el._rbCycleRefresh) el._rbCycleRefresh();
+  });
+}
 /* the shared "全局/S/2" cycle button: a plain click/tap always just USES
    whichever one is currently active ("左键单击和手机端短按,效果都是使用
-   一次当前显示的按钮的功能") — switching which one is active requires the
-   small picker menu opened via long-press (mobile) or right-click
-   (desktop), so repeatedly using the SAME one (e.g. mashing S several
-   times in a row) never needs a long-press in between. btnClass matches
-   whichever zone this renders into (desktop rail vs compact bar), same as
-   every other button already rendered there. */
+   一次当前显示的按钮的功能") — long-press (mobile) or right-click
+   (desktop) instead directly advances to the NEXT one via
+   cycleRbFixedActive, so repeatedly using the SAME one (e.g. mashing S
+   several times in a row) never needs a long-press in between, and
+   switching to a specific OTHER one is just "long-press however many
+   times it takes to cycle there" rather than opening a picker menu.
+   btnClass matches whichever zone this renders into (desktop rail vs
+   compact bar), same as every other button already rendered there. */
 function renderRbCycleBtn(btnClass){
   var trigger = document.createElement('button');
   trigger.className = btnClass;
   function refresh(){
     var active = rbFixedActiveButton();
     trigger.textContent = active ? active.name : '?';
-    trigger.title = '点击：随机展示 · 长按/右键：切换 全局/S/2';
+    trigger.title = '点击：随机展示 · 长按/右键：切换到下一个（全局/S/2）';
   }
   refresh();
   trigger.addEventListener('click', function(ev){
@@ -7155,14 +7250,13 @@ function renderRbCycleBtn(btnClass){
   });
   trigger.addEventListener('contextmenu', function(ev){
     ev.preventDefault();
-    openRbFixedSwitchMenu(ev.clientX, ev.clientY, trigger, refresh);
+    cycleRbFixedActive(trigger, refresh);
   });
   var timer = null;
   trigger.addEventListener('mousedown', function(ev){
-    var x = ev.clientX, y = ev.clientY;
     timer = setTimeout(function(){
       trigger._suppressClick = true;
-      openRbFixedSwitchMenu(x, y, trigger, refresh);
+      cycleRbFixedActive(trigger, refresh);
     }, LONG_PRESS_MS);
   });
   function clearTimer(){ if(timer){ clearTimeout(timer); timer = null; } }
@@ -7180,7 +7274,7 @@ function renderRbCycleBtn(btnClass){
     timer = setTimeout(function(){
       tFired = true;
       trigger._suppressClick = true;
-      openRbFixedSwitchMenu(t.clientX, t.clientY, trigger, refresh);
+      cycleRbFixedActive(trigger, refresh);
     }, LONG_PRESS_MS);
   }, {passive:true});
   trigger.addEventListener('touchmove', function(ev){
@@ -7198,48 +7292,6 @@ function renderRbCycleBtn(btnClass){
   trigger.addEventListener('touchcancel', clearTimer);
   trigger._rbCycleRefresh = refresh;
   return trigger;
-}
-var rbFixedSwitchMenuEl = null;
-function closeRbFixedSwitchMenu(){
-  if(rbFixedSwitchMenuEl){ rbFixedSwitchMenuEl.remove(); rbFixedSwitchMenuEl = null; }
-  document.removeEventListener('mousedown', closeRbFixedSwitchMenuOnce, {capture:true});
-}
-function closeRbFixedSwitchMenuOnce(e){
-  if(!e.target.closest('.ctx-menu')) closeRbFixedSwitchMenu();
-}
-/* small picker listing 全局/S/2 — picking one just changes which button
-   the shared cycle trigger displays/activates from now on; it does NOT
-   itself activate/random-pick (that's what a plain click on the trigger
-   is for). Reuses .ctx-menu/.ctx-menu-item styling, same as
-   openRbCtxMenu/openTreeDeleteMenu elsewhere in this file. */
-function openRbFixedSwitchMenu(x, y, trigger, onPicked){
-  closeRbFixedSwitchMenu();
-  var menu = document.createElement('div');
-  menu.className = 'ctx-menu';
-  menu.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
-  (state.randomButtons||[]).filter(function(b){ return b.isGlobal || b.isFixed; }).forEach(function(btn){
-    var b = document.createElement('button');
-    b.className = 'ctx-menu-item';
-    b.textContent = btn.name||'?';
-    b.addEventListener('click', function(){
-      closeRbFixedSwitchMenu();
-      rbFixedActiveId = btn.id;
-      onPicked();
-      // keep every OTHER rendered copy of the cycle button (rail vs
-      // compact bar both exist in the DOM at once) in sync too, not just
-      // the one that was actually long-pressed/right-clicked.
-      document.querySelectorAll('.rail-btn.rail-pinned, .compact-rb-btn').forEach(function(el){
-        if(el!==trigger && el._rbCycleRefresh) el._rbCycleRefresh();
-      });
-    });
-    menu.appendChild(b);
-  });
-  document.body.appendChild(menu);
-  var mr = menu.getBoundingClientRect();
-  menu.style.left = Math.min(x, window.innerWidth-mr.width-10)+'px';
-  menu.style.top = Math.min(y, window.innerHeight-mr.height-10)+'px';
-  rbFixedSwitchMenuEl = menu;
-  setTimeout(function(){ document.addEventListener('mousedown', closeRbFixedSwitchMenuOnce, {capture:true}); }, 0);
 }
 /* right-click context menu on a materialized (non-global) random-pick
    button: rename / re-scope (re-open the tree picker pre-filled with this
@@ -8416,52 +8468,37 @@ var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge at 中速 (mult=
 // since compactDragConsumed only ever gets set by compactMoveSelected
 // itself.
 // "彻底删除触摸滑动的功能,修改成用上下按钮控制...🖐️有3种蓝色,再它们后面
-// 再加一个红色,也就是3+1+1=5次案件循环" — 'scroll' is the 5th state,
-// appended after 'slow' so the cycle stays off→fast→mid→slow→scroll→off.
-// It repurposes ⬆️⬇️⬅️➡️ a SECOND way: not to nudge a node's px/py (that's
-// what fast/mid/slow still do) but to pan compactChildrenView itself — the
-// same offsetX/offsetY a live-finger touch-drag used to write directly,
-// before that gesture was removed entirely for being "非常卡,滑动识别不
-// 准确,且会导致其他按钮卡死". "按了方向键,再按一下按钮就应该退回到默认
-// 状态" — scroll now sets compactDragConsumed too (see compactScrollView's
-// own comment), so the NEXT 🖐️ tap after any pan short-circuits straight
-// to 'off' exactly like fast/mid/slow already did — only the FIRST tap
-// arming scroll (with no pan yet) still advances normally.
-var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow', 'scroll', 'onlyEmptyB'];
+// 再加一个红色,也就是3+1=4次按键循环" — 'scroll' is the 4th and last
+// state, appended after 'slow' so the cycle stays off→fast→mid→slow→
+// scroll→off. It repurposes ⬆️⬇️⬅️➡️ a SECOND way: not to nudge a node's
+// px/py (that's what fast/mid/slow still do) but to pan
+// compactChildrenView itself — the same offsetX/offsetY a live-finger
+// touch-drag used to write directly, before that gesture was removed
+// entirely for being "非常卡,滑动识别不准确,且会导致其他按钮卡死". "按了
+// 方向键,再按一下按钮就应该退回到默认状态" — scroll now sets
+// compactDragConsumed too (see compactScrollView's own comment), so the
+// NEXT 🖐️ tap after any pan short-circuits straight to 'off' exactly like
+// fast/mid/slow already did — only the FIRST tap arming scroll (with no
+// pan yet) still advances normally.
+// "把🫥单独拉出来变成一个随机选一按钮,而不是让它控制现有的随机选一...把
+// 🖐️的循环变成关闭+3个蓝色+1个红色,删除掉🫥的位置" — the former 6th
+// cycle state (🫥/onlyEmptyB, which retargeted EVERY random-pick button's
+// shared scope via appParams.onlyEmptyBNodes) is gone from this cycle
+// entirely; see cbAddToInboxEl's own long-press-to-switch comment for
+// where that "仅空B" semantics now lives instead — as its OWN dedicated
+// random-pick action, not a global scope-flip.
+var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow', 'scroll'];
 var COMPACT_DRAG_MULT = {mid:1, fast:25, slow:1/5};
 var COMPACT_SCROLL_STEP = BASE_DIAM*0.6; // one deliberate "page" of scroll per tap, bigger than a single node-nudge step
 var compactDragMode = 'off';
 var compactDragConsumed = false;
 var cbDragToggleEl = document.getElementById('cbDragToggle');
-// "再在红色之后再加一个,按下以后,🖐️变成🫥,作用是改变随机选一的功能" — the
-// 6th cycle state is NOT another arrow-repurposing mode like fast/mid/
-// slow/scroll (⬆️⬇️⬅️➡️ are untouched while this is active) — the button
-// glyph swaps ✋→🫥 for as long as this state is active so its state is
-// visible without reading the tooltip.
-//
-// "正确的逻辑是,只要🖐️按钮没有显示为🫥,就全都表示仅非空B,只有当🖐️按钮
-// 显示为🫥的那一个状态,才能是空B...根据🫥直接决定状态,而不是根据🫥来切换
-// 状态" — appParams.onlyEmptyBNodes must be a pure FUNCTION of
-// compactDragMode (true iff compactDragMode==='onlyEmptyB', false in
-// every other state), never a persisted flag that gets flipped on ENTRY
-// to this state. The earlier version toggled it once per entry, so the
-// flag's value depended on how many times 🫥 had been landed on before —
-// exactly the "循环按🖐️...每次出现🫥...功能就跳变一次" symptom, where the
-// meaning of 🫥 silently alternated between "仅空B" and "仅非空B" across
-// separate activations instead of always meaning the same thing. Setting
-// it unconditionally on every single 🖐️ tap (not just the ones landing on
-// 'onlyEmptyB') is what makes desktop's own "仅空B" button (which can be
-// toggled independently while 手机精致模式 is active, e.g. via the shared
-// appParams state) get immediately overridden back to the correct value
-// derived from compactDragMode the next time this button is pressed,
-// rather than the two surfaces' toggles fighting each other.
 function refreshCbDragToggleUI(){
   cbDragToggleEl.classList.remove('active', 'cbdrag-mid', 'cbdrag-fast', 'cbdrag-slow', 'cbdrag-scroll');
-  if(compactDragMode!=='off' && compactDragMode!=='onlyEmptyB') cbDragToggleEl.classList.add('cbdrag-'+compactDragMode);
-  cbDragToggleEl.textContent = compactDragMode==='onlyEmptyB' ? '🫥' : '✋';
-  cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：快速→中速→慢速→滚动→仅空B）'
+  if(compactDragMode!=='off') cbDragToggleEl.classList.add('cbdrag-'+compactDragMode);
+  cbDragToggleEl.textContent = '✋';
+  cbDragToggleEl.title = compactDragMode==='off' ? '拖拽平移：开启后方向键移动最近选中的节点（点击循环切换速度：快速→中速→慢速→滚动）'
     : compactDragMode==='scroll' ? '屏幕滚动中（红色）：⬆️⬇️⬅️➡️滚动可见子节点区域（横向排版时⬅️➡️才有效）；点击关闭'
-    : compactDragMode==='onlyEmptyB' ? '随机选一范围：仅无孩子且无detail的B节点（与电脑版"仅空B"共用同一开关）；点击关闭'
     : '拖拽平移中（'+({mid:'中速', fast:'快速', slow:'慢速'})[compactDragMode]+'）：点击切换下一速度，或移动一次节点后再点击关闭';
 }
 cbDragToggleEl.addEventListener('click', function(){
@@ -8474,40 +8511,24 @@ cbDragToggleEl.addEventListener('click', function(){
     compactDragMode = COMPACT_DRAG_SPEEDS[(idx+1) % COMPACT_DRAG_SPEEDS.length];
   }
   compactDragConsumed = false;
-  // derive the flag from the new state EVERY tap (not just the ones that
-  // just entered/left 'onlyEmptyB') — see this function's own top comment
-  // for why this must be a derivation, not a toggle.
-  var wantOnlyEmpty = (compactDragMode==='onlyEmptyB');
-  if(appParams.onlyEmptyBNodes !== wantOnlyEmpty){
-    appParams.onlyEmptyBNodes = wantOnlyEmpty;
-    saveParams();
-    if(typeof refreshParamsUI==='function') refreshParamsUI();
-    render();
-  }
   refreshCbDragToggleUI();
 });
 refreshCbDragToggleUI();
-/* "🖐️按钮只要没有在默认状态(蓝色,红色,🫥),任何跳转功能(搜索,treeview,
+/* "🖐️按钮只要没有在默认状态(蓝色,红色),任何跳转功能(搜索,treeview,
    新建,随机选一)都会立即使得它变回默认状态,而不是继续维持" — every jump
    entry point in 手机精致模式 (activateRandomButton/commitSearchResult/
    the tree-view tag's own jump handler/cbAddToInbox's onCommit) calls this
    right before changing state.focusId. 'off' is the one state this is a
    no-op for (nothing to reset), matching "只要没有在默认状态" — 'off'
    IS the default state, so a jump landing while 🖐️ was already off must
-   never touch it. Every other state (fast/mid/slow/scroll/onlyEmptyB) is
+   never touch it. Every other state (fast/mid/slow/scroll) is
    forced back to 'off' unconditionally, regardless of compactDragConsumed
    — a jump is not "one more arrow press", it's leaving the whole context
-   that speed/scroll/onlyEmptyB applied to. */
+   that speed/scroll applied to. */
 function resetCompactDragModeIfActive(){
   if(compactDragMode==='off') return;
   compactDragMode = 'off';
   compactDragConsumed = false;
-  var wantOnlyEmpty = false;
-  if(appParams.onlyEmptyBNodes !== wantOnlyEmpty){
-    appParams.onlyEmptyBNodes = wantOnlyEmpty;
-    saveParams();
-    if(typeof refreshParamsUI==='function') refreshParamsUI();
-  }
   refreshCbDragToggleUI();
 }
 // shared by all four arrow buttons while move-mode is armed: nudges
@@ -8540,8 +8561,29 @@ function compactMoveSelected(dx, dy){
 // mode, so a 🖐️ tap right after should still just advance the cycle
 // normally rather than short-circuiting to 'off'.
 function compactScrollView(dx, dy){
+  // "允许↓配合✋按钮显示为红色的时候向下拖拽出全部内容" — a leaf/childless
+  // root (or one whose children-group simply isn't scrollable on this
+  // axis) has compactChildrenView.axis===null, so the children-group pan
+  // below is correctly a no-op for it — but #compactRootLabel (the
+  // background-wall summary text) can independently overflow ITS OWN
+  // max-height/overflow-y:auto band regardless of whether there are any
+  // children at all, and until now the only way to reach that overflow
+  // was a raw touch-drag on the label itself, never this button. Scrolling
+  // the label takes priority over a no-op children-pan on this same press
+  // (never both at once — they're visually the same "红色⬇️" gesture, and
+  // a root can't need both simultaneously: a scrollable children-group
+  // means there ARE children, in which case the label's own text is capped
+  // by the SAME summary-not-allowed-to-grow-tall rule that only relaxes
+  // when detail is empty AND the node is a leaf — see refreshInsertStatUI/
+  // #insertSummary's own comment).
+  if(dy!==0 && compactChildrenView.axis!=='y'){
+    if(compactRootLabel.scrollHeight>compactRootLabel.clientHeight){
+      compactRootLabel.scrollTop += dy*COMPACT_SCROLL_STEP;
+      compactDragConsumed = true;
+    }
+    return;
+  }
   if(dx!==0 && compactChildrenView.axis!=='x') return;
-  if(dy!==0 && compactChildrenView.axis!=='y') return;
   var vis = visibleCanvasRect();
   compactChildrenView.offsetX -= dx*COMPACT_SCROLL_STEP;
   compactChildrenView.offsetY -= dy*COMPACT_SCROLL_STEP;
@@ -8682,7 +8724,7 @@ document.getElementById('cbAddChild').addEventListener('click', function(){
    the main view to this inbox node as its OWN focus root — "确认以后,
    主视角要跳转到以那个按钮为可见区域根节点的视角,而不是现在这样停留在
    之前的视角". */
-document.getElementById('cbAddToInbox').addEventListener('click', function(){
+function cbAddToInboxAction(){
   var rootKids = children(state.rootId);
   var inbox = rootKids.filter(function(k){ return richToPlain(k.summary)==='未归纳'; })[0];
   if(!inbox){
@@ -8702,34 +8744,103 @@ document.getElementById('cbAddToInbox').addEventListener('click', function(){
     scheduleSave(); render();
     resyncRootView();
   }});
+}
+/* "把🖐️第五下的🫥单独拉出来变成一个随机选一按钮...让它和✳️按钮合并,长按
+   切换...长按✳️的时候,按钮会切换为🫥,此时短按的时候,功能是随机显示一个
+   [空B或未归纳子节点]...再次长按🫥,则会切换回去✳️按钮的功能" — cbInboxMode
+   ('inbox' | 'onlyEmptyB') tracks which of the two functions a plain tap
+   currently performs; long-press (mouse/touch, same LONG_PRESS_MS timer
+   pattern renderRbCycleBtn/attachRbLongPress already use elsewhere in
+   this file) just flips it, swapping the glyph, and does NOT itself
+   perform either action — mirroring how long-press on the rail's own
+   random-pick buttons opens a menu instead of activating. */
+var cbInboxMode = 'inbox';
+var cbAddToInboxEl = document.getElementById('cbAddToInbox');
+function refreshCbAddToInboxUI(){
+  cbAddToInboxEl.textContent = cbInboxMode==='onlyEmptyB' ? '🫥' : '✳️';
+  cbAddToInboxEl.classList.toggle('cb-inbox-empty-mode', cbInboxMode==='onlyEmptyB');
+  cbAddToInboxEl.title = cbInboxMode==='onlyEmptyB'
+    ? '随机选一：全域空B节点 ∪ 未归纳子节点（长按切回✳️新建）'
+    : '新建节点到未归纳节点（长按切换为🫥随机选一）';
+}
+refreshCbAddToInboxUI();
+/* synthetic random-pick button object for the 🫥 mode's own dedicated
+   scope — never added to state.randomButtons (not persisted, not listed
+   in any panel/rail — this button is its own standalone entry point, not
+   another materialized button), just handed straight to the SAME
+   pickRandomBNode/activateRandomButton pipeline every other random-pick
+   surface already shares, so this gets the exact same weighting-formula
+   evaluation, ↩️-undo integration, and post-pick vis/expand behavior for
+   free. See randomButtonScopeBNodes' own isEmptyOrInbox branch for the
+   actual scope definition. */
+var cbInboxRandomButton = {id: 'cb-inbox-random', name:'空B/未归纳', isEmptyOrInbox:true};
+cbAddToInboxEl.addEventListener('click', function(ev){
+  if(cbAddToInboxEl._suppressClick){ cbAddToInboxEl._suppressClick = false; return; }
+  if(cbInboxMode==='onlyEmptyB') activateRandomButton(cbInboxRandomButton);
+  else cbAddToInboxAction();
 });
-// 🟧: "最近选中的节点变成根节点视图,相当于双击触摸" — same effect as
-// compactNodeTap's own double-tap branch (n.drilled=true; state.focusId=
-// n.id), just reachable from a single button tap on whichever node
-// currentSelectedNode() resolves to (selectedId if set, else the current
-// focus root — same fallback every other selection-driven action here
-// already uses).
-document.getElementById('cbMakeRoot').addEventListener('click', function(){
-  var n = currentSelectedNode();
-  if(!n) return;
-  // "在已经全屏了一个节点以后,如果再按一次,目前是没有功能的,新增功能,
-  // 打开信息编辑窗口,就好像长按一样。其他时候功能不变" — pressing 🟧 while
-  // n is ALREADY the current focus root would otherwise be a pure no-op
-  // (n.drilled/state.focusId/selectedId all already at their target
-  // values, nothing for scheduleSave/render to actually change) — that
-  // dead press now opens the same unified edit dialog a long-press on
-  // this node would (openInsertDialog's own mode:'edit'), instead of just
-  // silently doing nothing. Every other case (n isn't yet the focus root)
-  // is completely unchanged.
-  if(n.id===state.focusId){
-    openInsertDialog({mode:'edit', node:n});
-    return;
+(function(){
+  var timer = null, fired = false;
+  function clearTimer(){ if(timer){ clearTimeout(timer); timer = null; } }
+  function toggleMode(){
+    cbInboxMode = (cbInboxMode==='onlyEmptyB') ? 'inbox' : 'onlyEmptyB';
+    refreshCbAddToInboxUI();
   }
-  pushUndo();
-  n.drilled = true;
-  state.focusId = n.id;
-  selectedId = null;
-  scheduleSave(); render();
+  cbAddToInboxEl.addEventListener('mousedown', function(ev){
+    timer = setTimeout(function(){
+      fired = true;
+      cbAddToInboxEl._suppressClick = true;
+      toggleMode();
+    }, LONG_PRESS_MS);
+  });
+  cbAddToInboxEl.addEventListener('mouseup', clearTimer);
+  cbAddToInboxEl.addEventListener('mouseleave', clearTimer);
+  // same native touch long-press bridge attachRbLongPress/renderRbCycleBtn
+  // use elsewhere in this file — a real finger slide before the timer
+  // fires cancels it (scroll/drag attempt, not a long-press).
+  var tStartX=0, tStartY=0, tMoved=false;
+  cbAddToInboxEl.addEventListener('touchstart', function(ev){
+    if(ev.touches.length!==1) return;
+    var t = ev.touches[0];
+    tStartX = t.clientX; tStartY = t.clientY; tMoved = false; fired = false;
+    timer = setTimeout(function(){
+      fired = true;
+      cbAddToInboxEl._suppressClick = true;
+      toggleMode();
+    }, LONG_PRESS_MS);
+  }, {passive:true});
+  cbAddToInboxEl.addEventListener('touchmove', function(ev){
+    if(tMoved || !ev.touches.length) return;
+    var t = ev.touches[0];
+    if(Math.abs(t.clientX-tStartX)+Math.abs(t.clientY-tStartY)>10){
+      tMoved = true;
+      clearTimer();
+    }
+  }, {passive:true});
+  cbAddToInboxEl.addEventListener('touchend', function(ev){
+    clearTimer();
+    if(fired) ev.preventDefault();
+  });
+  cbAddToInboxEl.addEventListener('touchcancel', clearTimer);
+})();
+// 🟧: "直接是打开当前显示区域根节点的信息编辑窗口,不再拥有其他功能...
+// 按下他一次永远会进入一个信息编辑窗口,也就是当前可见区域根节点的,不论它
+// 有没有孩子节点,和选中了谁无关" — redefined from the old "make the
+// selected node the root, or if it's already the root, open its edit
+// dialog" behavior, which depended on currentSelectedNode() (selectedId if
+// set, else state.focusId) — a STALE selectedId left over from an earlier
+// selection (e.g. a leaf node selected, then navigated away from via a
+// DIFFERENT jump that never cleared selectedId) could silently win over
+// the current focus root, making this button jump BACK to that old
+// selection instead of doing what its label/position implied — "退回到
+// 当前节点的上一级节点". Reading state.focusId directly removes selection
+// history from the equation entirely: this button now only ever knows
+// about "whatever is currently filling the screen", never what used to be
+// selected.
+document.getElementById('cbMakeRoot').addEventListener('click', function(){
+  var n = node(state.focusId);
+  if(!n) return;
+  openInsertDialog({mode:'edit', node:n});
 });
 // "以前是按住两排按钮区域没有按钮的部分就可以拖出来,现在一定要碰到最底下
 // 短横线,和手机操作屏幕底下冲突了...按住没有按钮的区域就能拖出来" — the
@@ -9542,8 +9653,23 @@ closeAllRailPanels();
    removes the underlying scroll instead of chasing its visual symptom.
    Registered unconditionally (not gated on mobile-compact-mode) since a
    window-level scroll is equally meaningless in every UI mode here — no
-   mode has ever relied on one, so this is a pure no-op everywhere else. */
+   mode has ever relied on one, so this is a pure no-op everywhere else.
+   EXCEPT while #insertOverlay is open: focusing #insertSummary/#insertDetail
+   can ALSO trigger this same native keyboard-avoidance scroll, and when
+   the field's own text is short enough that it has nothing to scroll
+   INTERNALLY (overflow-y:auto with no overflow yet), the only way the
+   browser can lift the caret above the keyboard at all is this exact
+   window-level scroll — snapping it back to (0,0) here was silently
+   cancelling that, so short detail/summary text could never scroll into
+   view above the keyboard while long text (which scrolls internally
+   instead, a different scroll target this listener never sees) worked
+   fine — "只有当文本长的时候才能显示文字往上弹,而不论文本数量是多少都应该
+   一样". Safe to allow here: #insertOverlay sits at z-index:3000, well
+   above #searchFlyout's own 850, so even if this SAME scroll also nudges
+   that off-screen-parked panel toward the viewport, it stays fully
+   covered by the dialog's own opaque background the whole time. */
 window.addEventListener('scroll', function(){
+  if(insertOverlay.classList.contains('show')) return;
   if(window.scrollX!==0 || window.scrollY!==0) window.scrollTo(0, 0);
 }, {passive:true});
 
