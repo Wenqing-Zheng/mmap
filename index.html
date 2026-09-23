@@ -744,7 +744,7 @@
      zoom sometimes never resets — font-size:16px on both fields (up
      from the desktop dialog's 14px/13px) keeps focus from ever
      triggering that zoom in the first place. */
-  html.mobile-compact-mode #insertSummary{margin-bottom:8px;max-height:30vh;font-size:16px;flex-shrink:0;}
+  html.mobile-compact-mode #insertSummary{margin-bottom:8px;max-height:30vh;font-size:19px;flex-shrink:0;}
   /* "在detail有内容的时候继续保持不允许summary变高,但当detail没有内容的
      时候,summary更长更多换行的时候也可以让文本框变高直到撑满屏幕" —
      #insertDialog.detail-empty (toggled by refreshSummaryGrowState,
@@ -783,7 +783,18 @@
      the flex algorithm could shrink summary/labels/attr-grid/actions
      instead (or as well), squeezing the very row this is trying to keep
      visible. */
-  html.mobile-compact-mode #insertDetail{flex:0 1 auto;min-height:0;max-height:none;margin-bottom:8px;font-size:16px;}
+  html.mobile-compact-mode #insertDetail{flex:0 1 auto;min-height:0;max-height:none;margin-bottom:8px;font-size:19px;}
+  /* "文字比复制按钮小太多,把他们两个大小平均一下...文字放大1.2倍,复制
+     符号变小成80%" — summary/detail's own font-size is bumped by the
+     16px->19px change above (16*1.2=19.2, rounded); the copy button's
+     44px/26px-icon size (see .id-copy-btn's own "2倍大" comment) shrinks
+     to 80% of that HERE, scoped to compact mode only — desktop's own
+     .id-copy-btn (14px/13px summary/detail font) keeps the full 44px/26px
+     size unchanged, this mismatch is compact-mode-specific. Icon <svg>
+     width/height are set inline on the tag itself, not via CSS, so those
+     shrink via a transform instead of a size override. */
+  html.mobile-compact-mode .id-copy-btn{width:35px;height:35px;}
+  html.mobile-compact-mode .id-copy-btn svg{width:80%;height:80%;}
   html.mobile-compact-mode #insertDialog .id-label-row{flex-shrink:0;}
   html.mobile-compact-mode .id-attr-grid{margin-bottom:8px;flex-shrink:0;}
   /* "确认取消删除等等一排按钮全部永远固定在信息编辑窗口可见区域的最下方,
@@ -1299,11 +1310,22 @@
      enlarged HIT AREA around it too, not just a bigger character
      floating in the same tiny box. display:inline-flex + centering
      keeps the now-larger glyph visually centered within that bigger box
-     instead of sitting in a corner. */
+     instead of sitting in a corner.
+     "太大了,要和文字纵向大小对齐,缩小成0.8倍,且需要纵向居中" — that 3x
+     turned out oversized relative to the header's own "树状视图" text;
+     0.8x of the prior clamp() (54/66 -> 43/53, min-width/height 44 -> 35)
+     brings the glyph itself back down near the label's own line-height.
+     align-self:center (on top of #compactTreeHead's own align-items:center)
+     is what actually fixes the vertical centering — the label text's
+     own font-size:clamp(12px,3vw,14px) line box sits far shorter than
+     this button's box, so without an explicit self-alignment the flex
+     row's cross-axis stretch (or a lingering baseline quirk from the
+     hugely oversized glyph) was the actual cause of the visible
+     misalignment, not the CENTERING RULE itself already being absent. */
   #compactTreeBack{
-    cursor:pointer;font-size:clamp(54px,13.2vw,66px);font-weight:700;color:var(--text-dim);
-    display:inline-flex;align-items:center;justify-content:center;
-    min-width:44px;min-height:44px;line-height:1;
+    cursor:pointer;font-size:clamp(43px,10.6vw,53px);font-weight:700;color:var(--text-dim);
+    display:inline-flex;align-items:center;justify-content:center;align-self:center;
+    min-width:35px;min-height:35px;line-height:1;
   }
   #compactTreeList{flex:1;overflow-y:auto;padding:6px;position:relative;}
   .ctv-row{
@@ -5357,7 +5379,25 @@ function openInsertDialog(cfg){
    summary had grown tall must shrink summary back down immediately, not
    just the next time the dialog happens to reopen. */
 function refreshSummaryGrowState(){
-  insertDialog.classList.toggle('detail-empty', richToPlain(insertDetailEl.innerHTML).trim().length===0);
+  var wasEmpty = insertDialog.classList.contains('detail-empty');
+  var isEmpty = richToPlain(insertDetailEl.innerHTML).trim().length===0;
+  insertDialog.classList.toggle('detail-empty', isEmpty);
+  // "在Detail输入文本的瞬间...导致所有文本快速往上移,让文本框移到屏幕范围
+  // 的边界之外" — typing the FIRST character into a previously-empty
+  // detail flips this class off, which instantly re-applies #insertSummary's
+  // plain 30vh cap (see its own CSS rule) — summary can go from "grown to
+  // fill the whole dialog" back down to a sliver in one synchronous class
+  // toggle, yanking several vh out of the flex column above detail all at
+  // once. (The reverse — clearing detail back to empty, lifting the cap and
+  // letting a long summary grow back down PAST detail — is the same jump
+  // in the opposite direction.) Nothing here animates that shift (no CSS
+  // transition on either box's height), so the only reliable fix is to
+  // explicitly re-scroll whatever's actively focused back into view the
+  // instant the class actually changes — scrollIntoView forces the layout
+  // recalculation itself, so it already sees the NEW (post-toggle) sizes.
+  if(isCompactMode() && wasEmpty!==isEmpty && document.activeElement===insertDetailEl){
+    insertDetailEl.scrollIntoView({block:'nearest'});
+  }
 }
 function closeInsertDialog(){
   insertOverlay.classList.remove('show');
@@ -7918,29 +7958,57 @@ document.getElementById('expandCapPlus').addEventListener('click', function(){
 
 /* index -> unit {x,y} offset (pre-scale) for the fixed small-count
    symmetric arrangements the two size-reset buttons distribute direct
-   children into — "依据一级子节点数量,将他们以空间均匀的方式分布在母节点
-   正中央": 2 -> 水平两点, 3/5 -> 三角形/五角星, 4 -> 2x2正方形 (not a
-   rotated diamond ring — "四个兄弟排成直线,不是很合理,应该是2x2正方形"),
+   children into — “依据一级子节点数量,将他们以空间均匀的方式分布在母节点
+   正中央”: 2 -> 水平两点, 3/5 -> 三角形/五角星, 4 -> 2x2正方形 (not a
+   rotated diamond ring — “四个兄弟排成直线,不是很合理,应该是2x2正方形”),
    6 -> 五角星带中心节点. n>=7 falls through to the square-grid rule at the
-   bottom instead of getting its own entry here. */
+   bottom instead of getting its own entry here.
+   The RETURNED array's own order is what symmetrizeChildrenOf assigns,
+   slot-for-slot, to children(parentId)'s existing array order (creation/
+   sibling order — the SAME order tree view walks and JSON export
+   serializes, and the SAME order tree view's own“挪动”选择/孩子/兄弟
+   buttons splice into n.children) — “⭕️自动化重新排布的顺序...统一改
+   成从上往下,从左往右,一排一排编号排序,比如5个节点就是五角星形状,第一个节点
+   排在顶端,2/3排在两个胳膊位置,4/5排在左脚右脚”. readingOrderSort below
+   is what actually enforces that: each shape formula still computes its
+   points in whatever order is most convenient to derive geometrically
+   (the pentagon cases build clockwise from the top vertex), then this one
+   shared sort reorders the FINAL array into true top-to-bottom,
+   left-to-right reading order regardless of how each branch generated
+   it — so slot 0 is always the topmost (leftmost among ties) point, slot
+   1 the next, etc. The n===4 and n>=7 grid cases already happen to build
+   their points in that order natively (verified by inspection), so
+   sorting is a no-op for them; n===2 is also already left-then-right. Only
+   n===3/5/6's clockwise-from-top construction actually gets reordered. */
+function readingOrderSort(points){
+  // group into "rows" by y within a small epsilon (pure float noise
+  // between mirror-image angles like -18°/198° can leave their sines a
+  // ULP apart despite being geometrically the same row) rather than exact
+  // equality, then order left-to-right within each row.
+  var EPS = 1e-6;
+  return points.slice().sort(function(a,b){
+    if(Math.abs(a.y-b.y)>EPS) return a.y-b.y;
+    return a.x-b.x;
+  });
+}
 function symmetricUnitPositions(n){
   var TWO_PI = Math.PI*2;
   if(n<=1) return [{x:0,y:0}];
-  if(n===2) return [{x:-0.5,y:0},{x:0.5,y:0}];
+  if(n===2) return readingOrderSort([{x:-0.5,y:0},{x:0.5,y:0}]);
   if(n===3 || n===5){
     // regular n-gon, one vertex pointing straight up — a 5-pointed star's
     // own tips sit at exactly these same 5 evenly-spaced points, so a
-    // regular pentagon's vertex ring already IS the "五角星" arrangement.
+    // regular pentagon's vertex ring already IS the “五角星” arrangement.
     var R = 0.5/Math.sin(Math.PI/n);
     var out = [];
     for(var i=0;i<n;i++){
       var ang = (i/n)*TWO_PI - Math.PI/2;
       out.push({x:Math.cos(ang)*R, y:Math.sin(ang)*R});
     }
-    return out;
+    return readingOrderSort(out);
   }
   if(n===4){
-    return [{x:-0.5,y:-0.5},{x:0.5,y:-0.5},{x:-0.5,y:0.5},{x:0.5,y:0.5}];
+    return readingOrderSort([{x:-0.5,y:-0.5},{x:0.5,y:-0.5},{x:-0.5,y:0.5},{x:0.5,y:0.5}]);
   }
   if(n===6){
     // same 5-point ring as n===5, plus one node pinned dead center.
@@ -7950,14 +8018,14 @@ function symmetricUnitPositions(n){
       var ang6 = (j/5)*TWO_PI - Math.PI/2;
       out6.push({x:Math.cos(ang6)*R6, y:Math.sin(ang6)*R6});
     }
-    return out6;
+    return readingOrderSort(out6);
   }
-  // 7+: "近似正方形排列...向上寻找平方数然后视图填满它的布局" — smallest
+  // 7+: “近似正方形排列...向上寻找平方数然后视图填满它的布局” — smallest
   // side*side grid that fits every node (7/8/9 all land on a 3x3 grid),
   // filled row-major and centered on the mother; any leftover cells in
   // the grid's last row are simply left empty. Capped at side=4 (16
-  // nodes) — "平方数最多到4*4,超过16个节点的时候,不能再寻找下一个平方数,
-  // 而是按照4个一排,往下排列,没有上限". Past that cap the column count
+  // nodes) — “平方数最多到4*4,超过16个节点的时候,不能再寻找下一个平方数,
+  // 而是按照4个一排,往下排列,没有上限”. Past that cap the column count
   // freezes at 4 and the grid just grows taller (more rows) instead of
   // wider, since a 5-wide+ row on a phone screen is exactly what starts
   // forcing the font small enough to become illegible — capping columns
@@ -7969,8 +8037,8 @@ function symmetricUnitPositions(n){
   var outg = [];
   for(var k=0;k<n;k++){
     var row = Math.floor(k/side), col = k%side;
-    // "母节点上半部分几乎一半的面积都是空的,从中间才开始排布,并且一路排
-    // 到最底下" — the vertical center offset must be based on the ACTUAL
+    // “母节点上半部分几乎一半的面积都是空的,从中间才开始排布,并且一路排
+    // 到最底下” — the vertical center offset must be based on the ACTUAL
     // row count (rows), not on side (the fixed column count, always 4
     // past the 16-node cap). Centering against side instead of rows was
     // fine only by coincidence for n<=16 (where rows<=side, e.g. a 4x4
@@ -7981,7 +8049,7 @@ function symmetricUnitPositions(n){
     // space above, everything crammed toward the bottom edge.
     outg.push({x:col-(side-1)/2, y:row-(rows-1)/2});
   }
-  return outg;
+  return readingOrderSort(outg);
 }
 
 /* redistribute parentId's DIRECT children into the symmetricUnitPositions
@@ -8554,6 +8622,26 @@ document.addEventListener('mousedown', function(e){
     closeAllRailPanels();
   }
 });
+
+/* "精致手机版每一次任何按键按下的时候都给系统一个轻微震动" — one shared
+   listener covers every button in compact mode at once. This file has no
+   separate touch-event listeners anywhere (see the native-touch-bridge
+   comments elsewhere) — mobile browsers already synthesize mousedown from
+   a real finger-down, so this fires at the actual moment of a press, not
+   only after a completed tap. navigator.vibrate is feature-detected —
+   browsers/contexts without it (desktop, iOS Safari as of this writing)
+   silently no-op instead of throwing. Scoped to isCompactMode() only —
+   desktop/手机原始模式 were never asked for this. The selector covers every
+   actual <button> (compact bar, edit dialog, params steppers, rb dialogs,
+   tree-view move/stat-edit buttons) plus the handful of span-based toggles
+   that aren't real <button> elements (tree view header toggles, the tag
+   badge, tree-back chevron, search-cancel). */
+document.addEventListener('mousedown', function(e){
+  if(!isCompactMode()) return;
+  if(!e.target.closest('button, .ctv-tag, .ctv-move-btn, .ctv-stat-edit-btn, #cbFavFilterToggle, #cbStatEditToggle, #cbTreeMoveToggle, #compactTreeBack, #searchCancelBtn')) return;
+  if(navigator.vibrate) navigator.vibrate(8);
+}, {capture:true});
+
 
 /* ============================================================
    rail width: draggable, persisted, icons scale proportionally
@@ -9914,9 +10002,24 @@ closeAllRailPanels();
    一样". Safe to allow here: #insertOverlay sits at z-index:3000, well
    above #searchFlyout's own 850, so even if this SAME scroll also nudges
    that off-screen-parked panel toward the viewport, it stays fully
-   covered by the dialog's own opaque background the whole time. */
+   covered by the dialog's own opaque background the whole time.
+   SAME EXCEPTION for #compactFormulaInput — "拖拽区域下面的公式编辑区域,
+   单击弹出输入法,编辑区域仍然被输入法遮住,编辑的时候无法看见" is the exact
+   same root cause: it sits near the very bottom of #compactBarExpand, and
+   this listener's own (0,0) snap-back was cancelling the ONLY mechanism
+   (this native scroll) capable of lifting it above the keyboard, since
+   the textarea's own rows:2 height rarely has internal overflow to
+   scroll instead. Unlike #insertOverlay's z-index:3000, #compactBarExpand
+   has no opaque full-screen backdrop of its own — but #searchFlyout stays
+   safely covered regardless, because compactFormulaInput is only ever
+   focusable while #compactBar itself (z-index default, unraised) is on
+   screen UNDER whatever this scroll nudges, and #searchFlyout's own
+   z-index:850 sits ABOVE #compactBar — so nudging #searchFlyout into view
+   here would just show its own (harmless, `inert`-blocked) empty parked
+   panel on top, not cover any content this scroll is trying to reveal. */
 window.addEventListener('scroll', function(){
   if(insertOverlay.classList.contains('show')) return;
+  if(document.activeElement===compactFormulaInput) return;
   if(window.scrollX!==0 || window.scrollY!==0) window.scrollTo(0, 0);
 }, {passive:true});
 
