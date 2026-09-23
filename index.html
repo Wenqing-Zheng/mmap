@@ -615,9 +615,12 @@
      line, right-aligned — "summary和detail框的右上角放一个复制按钮". The
      row itself carries the margin-bottom the bare label used to have. */
   .id-label-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  /* "summary和detail的复制按钮太小了,改成2倍大" — width/height/icon size
+     all doubled from the original 22px/13px; svg width/height are set
+     inline on each <svg> tag (see #insertOverlay's own HTML), not here. */
   .id-copy-btn{
     border:none;background:transparent;color:var(--text-dim);cursor:pointer;
-    width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+    width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;
     flex-shrink:0;touch-action:manipulation;
   }
   .id-copy-btn:hover{background:rgba(120,130,160,.14);color:var(--text-main);}
@@ -683,6 +686,29 @@
      be order:-1 without also fighting that centering). Deletes the WHOLE
      subtree — see id-btn-delete's own click handler for the confirm step. */
   .id-btn-delete{background:#d1495b;color:#fff;margin-right:auto;}
+  /* "手机精致版...'进入'按钮扔掉,改成⬆️⬇️⬅️➡️四个导航键...排版布局和功能
+     与主界面底下四个导航键相同" — reuses .compact-nav-cluster's own
+     grid-template-areas layout (left/up/right columns, up/down rows) under
+     a scoped class name so this doesn't have to fight that selector's own
+     #compactBar-specific sizing assumptions. Hidden by default (desktop
+     keeps 进入 unchanged); html.mobile-compact-mode's own rule below flips
+     the two mutually exclusive controls. */
+  .id-nav-cluster{
+    display:none;
+    grid-template-columns:34px 34px 34px;
+    grid-template-rows:34px 34px;
+    gap:4px;
+    grid-template-areas:"left up right" "left down right";
+  }
+  .id-nav-btn{
+    border:none;border-radius:8px;background:rgba(120,130,160,.14);color:var(--text-main);
+    cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;
+    touch-action:manipulation;
+  }
+  #insertNavPrevSibling{grid-area:left;}
+  #insertNavUp{grid-area:up;}
+  #insertNavDown{grid-area:down;}
+  #insertNavSibling{grid-area:right;}
   /* "S按钮...默认背景透明,关闭,按动的时候循环切换S/2/关闭,S和2状态下按钮
      颜色分别是红色,绿色" — .id-btn.plain's own background is the "关闭"
      state (transparent-ish gray), so only the two ON states need their own
@@ -771,7 +797,25 @@
      100dvh viewport, there's no free space left to consume, so this has
      no effect and #insertDialog's own overflow-y:auto scrolling (see its
      own rule above) still applies exactly as before. */
-  html.mobile-compact-mode #insertActionsRow{flex-shrink:0;margin-top:auto;}
+  /* "确定取消删除按钮距离底下太近了,改成1.5倍当前距离屏幕底端的距离" —
+     the row's distance from the screen's bottom edge was previously just
+     #insertDialog's own padding-bottom (clamp(10px,3vw,14px)); adding an
+     EXTRA half of that same clamp() as margin-bottom brings the total gap
+     to 1.5× without touching the dialog's own padding (which every other
+     side, and the row's own horizontal alignment, still depends on). */
+  /* "两排按钮底端和确认/取消/S等按钮底端对齐" — the row's own default
+     align-items:stretch (flex's initial value, never overridden by the
+     base #insertDialog .id-actions rule above) would otherwise stretch
+     every OTHER single-row button to match the nav cluster's now-taller
+     2-row grid height, distorting them; flex-end keeps every sibling at
+     its own natural height, bottom-aligned against the tallest one
+     instead. */
+  html.mobile-compact-mode #insertActionsRow{flex-shrink:0;margin-top:auto;margin-bottom:clamp(5px,1.5vw,7px);align-items:flex-end;}
+  /* "'进入'按钮扔掉,改成⬆️⬇️⬅️➡️四个导航键...两排按钮底端和确认/取消/S
+     等按钮底端对齐" — the two controls are mutually exclusive: compact
+     mode hides 进入 and shows the nav cluster instead. */
+  html.mobile-compact-mode #insertEnterBtn{display:none;}
+  html.mobile-compact-mode .id-nav-cluster{display:grid;}
 
   /* ---------- mobile mode: bottom nav bar + bottom-sheet flyouts ----------
      Everything below is gated under html.mobile-mode (toggled by
@@ -1238,14 +1282,15 @@
      it — a second tap, closing the sheet, or a badge-tap jump all count
      as "什么都不操作...直接取消"). margin-left:auto pushes it to the
      header's own far right without needing a separate flex wrapper. */
-  #cbStatEditToggle, #cbTreeMoveToggle{
+  #cbFavFilterToggle, #cbStatEditToggle, #cbTreeMoveToggle{
     flex-shrink:0;cursor:pointer;font-weight:700;
     font-size:clamp(11px,2.8vw,13px);padding:5px 10px;border-radius:8px;
     background:rgba(120,130,160,.14);color:var(--text-dim);
   }
-  /* "修MI"按钮是这一对里第一个,margin-left:auto把两个按钮一起推到header最右边 */
-  #cbStatEditToggle{margin-left:auto;}
-  #cbStatEditToggle.active, #cbTreeMoveToggle.active{background:#d1495b;color:#fff;}
+  /* "收藏夹管理"按钮是这一排里第一个,margin-left:auto把三个按钮一起推到
+     header最右边(移到"修MI"自己身上的margin-left:auto,把新按钮排到它前面). */
+  #cbFavFilterToggle{margin-left:auto;}
+  #cbFavFilterToggle.active, #cbStatEditToggle.active, #cbTreeMoveToggle.active{background:#d1495b;color:#fff;}
   /* "tree view左上角那个退出按钮‹,不好触发太小了,放大3倍" — the OLD
      rule sized only the glyph itself (font-size), leaving its actual tap
      target exactly as small as the "‹" character's own glyph box — easy
@@ -1325,6 +1370,7 @@
   }
   .ctv-tag[data-cat="A"]{background:#4361ee;}
   .ctv-tag[data-cat="B"]{background:#d1495b;}
+  .ctv-tag[data-cat="C"]{background:#e0a734;color:#3a2e08;}
   .ctv-summary{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   /* "折叠起来孩子的，节点周围有一圈额外边框。没有孩子的没有边框" — a ring
      drawn only on rows that HAVE at least one A/B child but are currently
@@ -1482,7 +1528,7 @@
   </div>
 
   <div id="compactTreeSheet">
-    <div id="compactTreeHead"><span id="compactTreeBack">‹</span>树状视图<span id="cbStatEditToggle">修MI</span><span id="cbTreeMoveToggle">挪动</span></div>
+    <div id="compactTreeHead"><span id="compactTreeBack">‹</span>树状视图<span id="cbFavFilterToggle">正常</span><span id="cbStatEditToggle">修MI</span><span id="cbTreeMoveToggle">挪动</span></div>
     <div id="compactTreeList"></div>
   </div>
 
@@ -1586,9 +1632,9 @@
 <div id="insertOverlay">
   <div id="insertDialog">
     <span id="insertBatchBadge">连续插入中 · ⌘Enter 插入下一个 · Esc 结束</span>
-    <div class="id-label-row"><span class="id-label">Summary</span><button class="id-copy-btn" id="insertSummaryCopyBtn" title="复制Summary" data-target="insertSummary"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="id-copy-icon"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h9"/></svg><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="id-copy-check" style="display:none"><polyline points="4 12 9 17 20 6"/></svg></button></div>
+    <div class="id-label-row"><span class="id-label">Summary</span><button class="id-copy-btn" id="insertSummaryCopyBtn" title="复制Summary" data-target="insertSummary"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="id-copy-icon"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h9"/></svg><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="id-copy-check" style="display:none"><polyline points="4 12 9 17 20 6"/></svg></button></div>
     <div id="insertSummary" contenteditable="true" data-ph="节点摘要…"></div>
-    <div class="id-label-row"><span class="id-label">Detail</span><button class="id-copy-btn" id="insertDetailCopyBtn" title="复制Detail" data-target="insertDetail"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="id-copy-icon"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h9"/></svg><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="id-copy-check" style="display:none"><polyline points="4 12 9 17 20 6"/></svg></button></div>
+    <div class="id-label-row"><span class="id-label">Detail</span><button class="id-copy-btn" id="insertDetailCopyBtn" title="复制Detail" data-target="insertDetail"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="id-copy-icon"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h9"/></svg><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="id-copy-check" style="display:none"><polyline points="4 12 9 17 20 6"/></svg></button></div>
     <div id="insertDetail" contenteditable="true" data-ph="节点详情…"></div>
     <div class="id-attr-grid">
       <div class="id-stat-col">
@@ -1630,8 +1676,20 @@
     </div>
     <div class="id-actions" id="insertActionsRow">
       <button class="id-btn id-btn-delete" id="insertDeleteBtn">删除</button>
-      <button class="id-btn plain" id="insertFavoriteBtn">S</button>
+      <!-- "手机精致版...'进入'按钮扔掉,改成⬆️⬇️⬅️➡️四个导航键" — desktop
+           keeps 进入 unchanged (see insertEnterBtn's own JS); the compact-
+           only nav cluster below and insertEnterBtn are mutually exclusive
+           via CSS (html.mobile-compact-mode #insertEnterBtn{display:none}
+           and the cluster's own default display:none, flipped on together
+           — see their shared rule). -->
       <button class="id-btn plain" id="insertEnterBtn">进入</button>
+      <div class="id-nav-cluster" id="insertNavCluster">
+        <button class="id-nav-btn" id="insertNavPrevSibling" title="切换到上一个兄弟节点">⬅️</button>
+        <button class="id-nav-btn" id="insertNavUp" title="切换到父节点">⬆️</button>
+        <button class="id-nav-btn" id="insertNavDown" title="切换到子节点">⬇️</button>
+        <button class="id-nav-btn" id="insertNavSibling" title="切换到下一个兄弟节点">➡️</button>
+      </div>
+      <button class="id-btn plain" id="insertFavoriteBtn">S</button>
       <button class="id-btn plain" id="insertCancelBtn">取消</button>
       <button class="id-btn primary" id="insertOkBtn">确定</button>
     </div>
@@ -5009,6 +5067,28 @@ var insertSizeValueEl = document.getElementById('insertSizeValue');
 var insertDeleteBtn = document.getElementById('insertDeleteBtn');
 var insertFavoriteBtn = document.getElementById('insertFavoriteBtn');
 var insertEnterBtn = document.getElementById('insertEnterBtn');
+var insertNavClusterEl = document.getElementById('insertNavCluster');
+var insertNavUpEl = document.getElementById('insertNavUp');
+var insertNavDownEl = document.getElementById('insertNavDown');
+var insertNavSiblingEl = document.getElementById('insertNavSibling');
+var insertNavPrevSiblingEl = document.getElementById('insertNavPrevSibling');
+// remembers, per parent id, which child the dialog's own ⬇️ last entered —
+// mirrors compactNavStack's own "prefer whatever ⬆️ last left" idea for the
+// main canvas's own ⬆️⬇️, just scoped to navigation WITHIN this dialog
+// instead of the main view. Reset to empty on every FRESH dialog open (see
+// openInsertDialog's own guard on cfg._navReopen) — a brand-new long-press
+// session starts with no navigation history, exactly like compactNavStack
+// itself only ever grows during actual use, never carries over from an
+// entirely different node's own prior edit session.
+var insertNavStack = [];
+// "退出的时候最新可见的节点处于根节点,背景墙的位置,而不是仍然看到导航
+// 之前的位置" — tracks whether ⬆️⬇️⬅️➡️ actually moved the dialog to a
+// DIFFERENT node than the one it was opened on, for THIS open/close
+// session only. null until the first successful nav; reset on every
+// fresh open. Checked by closeInsertDialog/commitInsertDialog's own
+// dialog-closing paths to decide whether the main view's own focus needs
+// updating to match on the way out.
+var insertNavigatedTo = null;
 var pendingInsert = null; // {kind, anchorId, dir, batch, editNode}
 var focusBeforeInsertDialog = null;
 // defaults for a NEW node being created in this dialog — all ignored in
@@ -5195,7 +5275,16 @@ insertFavoriteBtn.addEventListener('click', function(){
 
 function openInsertDialog(cfg){
   pendingInsert = cfg;
-  focusBeforeInsertDialog = document.activeElement;
+  // a call from insertNav*'s own click handlers (see cfg._navReopen)
+  // re-invokes this same function to swap the dialog's content onto a
+  // different node WITHOUT starting a fresh navigation session — only a
+  // genuinely NEW long-press/tap resets the "where did nav actually take
+  // us" tracking used on the way out.
+  if(!cfg._navReopen){
+    focusBeforeInsertDialog = document.activeElement;
+    insertNavStack = [];
+    insertNavigatedTo = null;
+  }
   insertSummaryEl.innerHTML = cfg.node ? (cfg.node.summary||'') : '';
   insertDetailEl.innerHTML = cfg.node ? (cfg.node.detail||'') : '';
   // 预设: A的孩子默认A，B或C的孩子默认C — same rule as defaultCategoryForParent,
@@ -5229,6 +5318,13 @@ function openInsertDialog(cfg){
   // only ever gates on mode:'edit' — there being a real, already-existing
   // node to enter — never on cfg.node.id!==state.rootId.
   insertEnterBtn.style.display = (cfg.mode==='edit') ? '' : 'none';
+  // "手机精致版...'进入'按钮扔掉,改成⬆️⬇️⬅️➡️四个导航键" — same
+  // mode:'edit'-only gating as insertEnterBtn's own rule right above (a
+  // brand-new not-yet-created node has no parent/children/siblings of
+  // its own to navigate to in the first place). The base CSS rule already
+  // hides this entirely outside html.mobile-compact-mode, so this JS
+  // toggle only ever matters WITHIN compact mode.
+  insertNavClusterEl.style.display = (cfg.mode==='edit') ? '' : 'none';
   // "按➕和未归纳加号时...直接引导手机输入法弹出...长按节点编辑信息的时候
   // 同样的窗口不要让输入法自动弹出,只是两个新建节点按钮要自动弹出" —
   // scoped to 手机精致模式 only (desktop/手机原始模式 keep their prior
@@ -5265,6 +5361,25 @@ function refreshSummaryGrowState(){
 }
 function closeInsertDialog(){
   insertOverlay.classList.remove('show');
+  // "退出的时候最新可见的节点处于根节点,背景墙的位置,而不是仍然看到导航
+  // 之前的位置" — if ⬆️⬇️⬅️➡️ actually moved this dialog session to a
+  // different node than it was opened on, that node becomes the main
+  // view's OWN focus root on the way out, exactly like 🟧/insertEnterBtn's
+  // own "make this the focus root" effect — the dialog's own navigation
+  // is otherwise purely local to itself (state.focusId never changes
+  // WHILE the dialog stays open, only once it's actually closing), so
+  // without this the user would close the dialog and land back looking
+  // at whatever the canvas was showing before the long-press, with no
+  // trace of where they'd navigated to inside the dialog.
+  if(insertNavigatedTo && node(insertNavigatedTo.id)){
+    insertNavigatedTo.drilled = true;
+    state.focusId = insertNavigatedTo.id;
+    selectedId = null;
+    scheduleSave();
+    render();
+    resyncRootView();
+  }
+  insertNavigatedTo = null;
   pendingInsert = null;
   // the window-level scroll listener further below deliberately allows
   // drift WHILE this dialog is open (see its own comment) — snap it back
@@ -5290,7 +5405,7 @@ function closeInsertDialog(){
   }catch(err){ console.error('closeInsertDialog: focus restore failed', err); }
   focusBeforeInsertDialog = null;
 }
-function commitInsertDialog(){
+function commitInsertDialog(opts){
   if(!pendingInsert) return;
   var summary = sanitizeRich(insertSummaryEl.innerHTML);
   var detail = sanitizeRich(insertDetailEl.innerHTML);
@@ -5343,6 +5458,13 @@ function commitInsertDialog(){
     scheduleSave();
   }
   render();
+  if(opts && opts.suppressClose){
+    // nav-cluster path — caller (insertNavGoTo) is about to reopen the
+    // dialog on a DIFFERENT node right after this returns; closing here
+    // first would run closeInsertDialog's own focus-sync/restore logic
+    // against the node being LEFT, not the eventual destination.
+    return;
+  }
   if(pendingInsert && pendingInsert.batch){
     var batchCfg = pendingInsert;
     openInsertDialog(batchCfg);
@@ -5402,6 +5524,73 @@ insertEnterBtn.addEventListener('click', function(){
   scheduleSave();
   render();
   if(alreadyFocus) resyncRootView();
+});
+/* "手机精致版...'进入'按钮扔掉,改成⬆️⬇️⬅️➡️四个导航键...排版布局和功能
+   与主界面底下四个导航键相同,只不过导航的时候始终保持所在的页面是选中
+   节点的信息编辑框" — unlike insertEnterBtn (which commits+closes the
+   dialog to jump the WHOLE canvas), these four re-invoke openInsertDialog
+   on a DIFFERENT node while staying open the whole time — the dialog
+   itself is the thing being navigated, not the main view. commitInsertDialog()
+   first saves whatever the user just typed on the CURRENT node (same
+   "编辑+导航合并成一步" pattern insertEnterBtn's own comment already
+   established), then openInsertDialog(cfg) reloads every field for the
+   new target — cfg._navReopen suppresses openInsertDialog's own
+   navigation-session reset (see its own comment) so insertNavStack/
+   insertNavigatedTo persist across repeated taps within the SAME
+   long-press session. insertNavigatedTo is set to the FINAL destination
+   on every successful move (not just the first) so closeInsertDialog's
+   own "sync main view focus" logic always uses wherever navigation last
+   actually landed. */
+function insertNavGoTo(target){
+  if(!target) return;
+  commitInsertDialog({suppressClose:true});
+  insertNavigatedTo = target;
+  openInsertDialog({mode:'edit', node:target, _navReopen:true});
+}
+insertNavUpEl.addEventListener('click', function(){
+  if(!pendingInsert || pendingInsert.mode!=='edit') return;
+  var cur = pendingInsert.node;
+  var pn = parentOf(cur.id);
+  if(!pn) return;
+  insertNavStack.push(cur.id);
+  insertNavGoTo(pn);
+});
+insertNavDownEl.addEventListener('click', function(){
+  if(!pendingInsert || pendingInsert.mode!=='edit') return;
+  var cur = pendingInsert.node;
+  var kids = children(cur.id);
+  if(!kids.length) return;
+  // same "prefer whatever ⬆️ last left" idea as cbNavDownEl's own
+  // compactNavStack consult — walk the stack top-down for the first
+  // entry that's ACTUALLY one of cur's own direct children; discard
+  // anything else (stale/outside-this-subtree entries can't wedge every
+  // future ⬇️, same guarantee compactNavStack's own logic documents).
+  var target = null;
+  while(insertNavStack.length){
+    var id = insertNavStack.pop();
+    var n = node(id);
+    if(n && n.parentId===cur.id){ target = n; break; }
+  }
+  if(!target) target = kids[0];
+  insertNavGoTo(target);
+});
+insertNavSiblingEl.addEventListener('click', function(){
+  if(!pendingInsert || pendingInsert.mode!=='edit') return;
+  var cur = pendingInsert.node;
+  var pn = parentOf(cur.id);
+  if(!pn || pn.children.length<2) return;
+  var idx = pn.children.indexOf(cur.id);
+  var nextId = pn.children[(idx+1) % pn.children.length];
+  insertNavGoTo(node(nextId));
+});
+insertNavPrevSiblingEl.addEventListener('click', function(){
+  if(!pendingInsert || pendingInsert.mode!=='edit') return;
+  var cur = pendingInsert.node;
+  var pn = parentOf(cur.id);
+  if(!pn || pn.children.length<2) return;
+  var idx = pn.children.indexOf(cur.id);
+  var prevId = pn.children[(idx-1+pn.children.length) % pn.children.length];
+  insertNavGoTo(node(prevId));
 });
 insertOverlay.addEventListener('mousedown', function(e){ if(e.target===insertOverlay) closeInsertDialog(); });
 /* 手机精致模式's full-screen editor closes via the same "下滑中间/左滑
@@ -8995,7 +9184,11 @@ document.getElementById('cbMoreRaw').addEventListener('click', function(){
 var compactTreeSheetEl = document.getElementById('compactTreeSheet');
 var compactTreeListEl = document.getElementById('compactTreeList');
 function openCompactTreeSheet(){
-  renderCompactTreeView();
+  // "每次打开精致手机版的树列表的时候,那个按钮都默认是正常" — a fresh
+  // open always starts from 正常, regardless of whatever was left active
+  // last time the sheet was closed (setTreeFavFilter's own call below
+  // already re-renders, so no separate renderCompactTreeView() call here).
+  setTreeFavFilter(null);
   compactTreeSheetEl.classList.add('open');
 }
 function closeCompactTreeSheet(){
@@ -9009,6 +9202,21 @@ function closeCompactTreeSheet(){
   setTreeStatEditMode(false);
 }
 document.getElementById('compactTreeBack').addEventListener('click', closeCompactTreeSheet);
+// "收藏夹管理"按钮 — 正常/S/2三档循环,切换树列表的显示范围. 与挪动/修MI
+// 不同,这不是"编辑模式"(没有额外的每行按钮),只是切换renderCompactTreeView
+// 走哪条渲染分支 — 见该函数自己的 treeFavFilter 判断.
+var cbFavFilterToggleEl = document.getElementById('cbFavFilterToggle');
+var treeFavFilter = null; // null(正常) | 'S' | '2'
+function setTreeFavFilter(mode){
+  treeFavFilter = mode;
+  cbFavFilterToggleEl.textContent = mode==null ? '正常' : mode;
+  cbFavFilterToggleEl.classList.toggle('active', mode!=null);
+  renderCompactTreeView();
+}
+cbFavFilterToggleEl.addEventListener('click', function(){
+  setTreeFavFilter(treeFavFilter==null ? 'S' : (treeFavFilter==='S' ? '2' : null));
+});
+
 // "点开树视图后...最右边添加一个按钮'挪动'" — a 2-state toggle (armed/not)
 // plus, while armed, an optional "picked source" sub-state. Both pieces
 // of state are read by renderCompactTreeView on every re-render, so
@@ -9297,8 +9505,61 @@ function commitTreeMove(sourceId, targetId, mode){
   setTreeMoveMode(false); // "之后挪动节点变灰,选择和孩子和兄弟按钮消失" — already re-renders the tree list
   render();
 }
+// shared by both tree-branch rows (renderCompactTreeView's own walk) and
+// the flat 收藏夹 list below — "点击节点左侧A(1,1)将会跳转到节点作为跟
+// 节点...同样是单击/触摸左侧的色块会跳转到对应项目全屏显示" — the fav
+// list's own jump is identical to the tree tag's, just reached from a row
+// that has no ancestor chain of its own to matter.
+function compactTreeJumpTo(id){
+  var n = node(id); if(!n) return;
+  if(typeof resetCompactDragModeIfActive==='function') resetCompactDragModeIfActive();
+  pushUndo();
+  pushCompactActionUndo();
+  n.drilled = true;
+  state.focusId = id;
+  collapseBeyondDepth(id, appParams.maxAutoDepth);
+  setExpandedToDepth(id, appParams.maxAutoDepth);
+  selectedId = null;
+  scheduleSave();
+  render();
+  resyncRootView();
+  closeCompactTreeSheet();
+}
+// "收藏夹管理...激活S选项时,树状列表显示为S收藏的项目,不再区分树结构,
+// 所有收藏为S的ABC类节点一个一排" — flat, unordered-by-hierarchy list of
+// every node (any category, not just A/B like the tree branch view) whose
+// own favorite matches treeFavFilter. "触摸中间的部分则没有反应,因为没有
+// 树结构,所以不需要再折叠" — no row-body click handler at all here,
+// unlike the tree branch rows' own expand/collapse tap.
+function renderCompactFavList(){
+  Object.keys(state.nodes).map(node).filter(function(n){
+    return n && n.favorite===treeFavFilter;
+  }).forEach(function(n){
+    var row = document.createElement('div');
+    row.className = 'ctv-row';
+    row.dataset.id = n.id;
+    var tag = document.createElement('span');
+    tag.className = 'ctv-tag';
+    tag.dataset.cat = n.category;
+    tag.textContent = n.category+'('+importanceOf(n)+','+n.masterLevel+')';
+    tag.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      compactTreeJumpTo(n.id);
+    });
+    row.appendChild(tag);
+    var summary = document.createElement('span');
+    summary.className = 'ctv-summary';
+    summary.textContent = richToPlain(n.summary) || '(未命名)';
+    row.appendChild(summary);
+    compactTreeListEl.appendChild(row);
+  });
+}
 function renderCompactTreeView(){
   compactTreeListEl.innerHTML = '';
+  if(treeFavFilter){
+    renderCompactFavList();
+    return;
+  }
   (function walk(id, depth){
     var n = node(id);
     // C nodes (and anything under them) never render in this tree —
@@ -9327,21 +9588,7 @@ function renderCompactTreeView(){
       // "选择的按钮应该是全局根节点位置,而不是现在的一级节点位置".
       // "任何跳转功能(...treeview...)都会立即使得🖐️变回默认状态" — same
       // reset as activateRandomButton's own call.
-      if(typeof resetCompactDragModeIfActive==='function') resetCompactDragModeIfActive();
-      pushUndo();
-      // "↩️按钮额外具有撤回跳转功能...tree view点击跳转,都和撤回⭕️🌈一样
-      // 统一合并处理撤回" — snapshotted BEFORE state.focusId/selectedId
-      // change below.
-      pushCompactActionUndo();
-      n.drilled = true;
-      state.focusId = id;
-      collapseBeyondDepth(id, appParams.maxAutoDepth);
-      setExpandedToDepth(id, appParams.maxAutoDepth);
-      selectedId = null;
-      scheduleSave();
-      render();
-      resyncRootView();
-      closeCompactTreeSheet();
+      compactTreeJumpTo(id);
     });
     // "长按节点左边 A(1,1) 部分,底下弹出提示支持删除节点和全部子树" —
     // long-pressing the badge (not the row body, which is the drag/tap-to-
