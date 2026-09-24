@@ -18,6 +18,9 @@
     --divider:#c7cbd6;
     --shadow:0 10px 30px rgba(20,20,30,.10);
     --node-shadow:0 1px 3px rgba(20,20,30,.08);
+    /* set/read entirely via JS (applyBgImageDom) — see html.bg-image-active
+       body's own rule for how this gets painted. */
+    --bg-image-url:none;
   }
   html[data-theme="dark"]{
     --bg:#181a20;
@@ -200,7 +203,7 @@
      (fixed-position, appended to document.body, positioned off the
      trigger's own getBoundingClientRect()) rather than a child of
      #railPinnedZone, since that zone has no overflow:visible guarantee. */
-  #fileInput{display:none;}
+  #fileInput, #bgImageFileInput{display:none;}
   #railResizer{
     position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:ew-resize;z-index:520;
   }
@@ -686,6 +689,11 @@
      be order:-1 without also fighting that centering). Deletes the WHOLE
      subtree — see id-btn-delete's own click handler for the confirm step. */
   .id-btn-delete{background:#d1495b;color:#fff;margin-right:auto;}
+  /* "取消按钮颜色改成橙色" — overrides .id-btn.plain's own gray background
+     for #insertCancelBtn specifically; needs .id-btn in the selector to
+     match that rule's own specificity (2 classes), same reasoning as
+     .id-btn.id-fav-s/.id-fav-2's own override comment just below. */
+  .id-btn#insertCancelBtn{background:#e0895c;color:#fff;}
   /* "手机精致版...'进入'按钮扔掉,改成⬆️⬇️⬅️➡️四个导航键...排版布局和功能
      与主界面底下四个导航键相同" — reuses .compact-nav-cluster's own
      grid-template-areas layout (left/up/right columns, up/down rows) under
@@ -1226,7 +1234,98 @@
      just above it despite being a button instead of a slider. */
   #cbLockHFitLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex:1;}
   #cbLockHFitToggle{width:auto;flex-shrink:0;padding:0 14px;}
-  /* "拖拽区域下面再新建一个区域,用来存放电脑版随机选一的可编辑公式" —
+  /* "背景图功能,入口放在最底下锁定水平适配屏幕开关并列再加两个背景图开关"
+     — same label+control row shape as #cbLockHFitLabel's own pairing right
+     above, extended with a THIRD control (the minutes-textbox, "10这个数字
+     也在紧挨着的一个文本框里可以编辑") after the two buttons. cbBgLabel
+     does NOT get flex:1 the way cbLockHFitLabel does — with three controls
+     already fighting for space on one row (二 buttons + a number input),
+     letting the label eat all remaining space would squeeze the textbox
+     down to unusably narrow on a phone; a fixed shrink-to-content width
+     for the label leaves the textbox its own min-width instead. */
+  #cbBgLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
+  #cbBgToggle, #cbBgImport{width:auto;flex-shrink:0;padding:0 12px;}
+  #cbBgTimeoutInput{
+    width:44px;flex-shrink:0;border:1px solid var(--panel-border);border-radius:8px;
+    background:var(--bg);color:var(--text-main);font-size:13px;text-align:center;padding:4px 2px;
+  }
+  #compactBarRow9{display:flex;align-items:center;gap:clamp(6px,2vw,10px);padding-top:clamp(3px,1vw,6px);}
+  /* "背景图...会被center crop充满全屏" — background-size:cover is exactly
+     center-crop-to-fill; background-position:center anchors the crop to
+     the image's own middle rather than a corner.
+     IMPORTANT: this paints directly on <body> itself, NOT a separate
+     positioned overlay div — html,body's own `background:var(--bg)` rule
+     just above is the root element's canvas background, which every
+     browser paints as the page's absolute bottom layer regardless of any
+     z-index stacking context (per CSS2.1 §14.2 — z-index only orders
+     STACKED elements against each other, and the root/body background is
+     never part of that stack at all). A `position:fixed` sibling div at
+     z-index:-1 was tried first and rendered fully invisible — BEHIND that
+     unconditional opaque body paint, not merely behind the buttons —
+     because it's a positioned element competing in the wrong layer
+     entirely. Setting the image straight on body via a CSS var
+     (--bg-image-url, toggled by JS) sidesteps the whole stacking-context
+     question: it simply IS that bottom-layer paint, so there is nothing
+     for it to be occluded by. "跨越文本框,背景墙,按钮等等" is then achieved
+     by making every one of those surfaces semi-transparent (see the
+     html.bg-image-active rules below) so THEY let this show through, not
+     by this layer needing to punch through anything itself. */
+  html.bg-image-active body{background-image:var(--bg-image-url);background-size:cover;background-position:center;background-repeat:no-repeat;}
+  /* every surface that needs to become see-through once the background is
+     active — "可以看到背景图...要做到跨越文本框,背景墙,按钮等等,全都半
+     透明". Scoped entirely under html.bg-image-active so nothing here has
+     ANY effect while the feature is off (matches "默认关闭" exactly — no
+     visual change at all until the toggle is actually on). Node fills
+     (用户确认"节点也半透明") go through --node-fill's own alpha instead of
+     a blanket opacity rule here — see applyFrameStyle's own JS for why
+     (opacity would ALSO fade the border/text, not just the fill).
+     "半透明" (not FULLY transparent) — panels keep a translucent tint of
+     their own base color rather than going to `transparent` outright, so
+     text sitting on top of a busy photo still has a readable backdrop;
+     #compactBar/#compactTreeSheet's own light/dark var(--panel-bg) is
+     tinted here via rgba() so the SAME translucency shifts correctly with
+     the active theme instead of a single hardcoded gray. */
+  html.bg-image-active #compactBar,
+  html.bg-image-active #compactTreeSheet,
+  html.bg-image-active #searchFlyout,
+  html.bg-image-active #compactRootLabel{
+    background:rgba(120,130,160,.22)!important;
+  }
+  /* "信息编辑框即便半透明也应该覆盖在不透明的背景图上,不能看见主界面" —
+     unlike the bar/tree-sheet/label rules above (which sit INSIDE the
+     same single-layer page and are MEANT to let the body photo underneath
+     bleed through), the full-dialog overlays are their OWN separate
+     fixed-position layer stacked on top of #app entirely — a low-alpha
+     tint on THIS layer doesn't reveal the body photo sitting harmlessly
+     below it, it reveals #app's own buttons/canvas sitting for real right
+     behind it, which is wrong. These get the SAME body photo painted
+     again on themselves (own background-image, not the low-alpha peek-
+     through the bar/label rules use) UNDER a stronger, still-photo-
+     visible tint, so the dialog looks "semi-transparent" against the
+     photo while remaining fully opaque against whatever's actually
+     underneath it. */
+  html.bg-image-active #insertOverlay,
+  html.bg-image-active #statEditOverlay,
+  html.bg-image-active #rbMaterializeOverlay{
+    background-image:linear-gradient(rgba(20,22,30,.55),rgba(20,22,30,.55)),var(--bg-image-url)!important;
+    background-size:cover;background-position:center;background-repeat:no-repeat;
+  }
+  html.bg-image-active #insertDialog,
+  html.bg-image-active #statEditDialog,
+  html.bg-image-active #rbMaterializeDialog{
+    background:rgba(120,130,160,.3)!important;
+  }
+  html.bg-image-active .compact-btn,
+  html.bg-image-active .id-copy-btn,
+  html.bg-image-active #insertSummary,
+  html.bg-image-active #insertDetail,
+  html.bg-image-active .id-nav-btn,
+  html.bg-image-active .ctv-row,
+  html.bg-image-active #cbBgTimeoutInput{
+    background:rgba(120,130,160,.28)!important;
+  }
+  html.bg-image-active #canvasWrap{background:transparent!important;}
+  /* 拖拽区域下面再新建一个区域,用来存放电脑版随机选一的可编辑公式" —
      row8 reuses the desktop #randomFormulaInput/#randomFormulaDot markup
      verbatim (see compactFormulaInput's own JS wiring, which shares
      refreshFormulaStatus/formulaIsValid/state.randomFormula 1:1 with
@@ -1540,6 +1639,17 @@
         <span id="cbLockHFitLabel">锁定水平适配屏幕</span>
         <button class="compact-btn" id="cbLockHFitToggle" title="开启后子节点群永远水平对齐屏幕（左右不溢出，上下可滚动）；关闭后恢复按外接矩形比例自动选择对齐方向">开</button>
       </div>
+      <!-- "背景图功能,入口放在最底下锁定水平适配屏幕开关并列再加两个背景图
+           开关" — 总开关(cbBgToggle,默认关闭,不持久化跨刷新)/导入按钮
+           (cbBgImport)/自动关闭分钟数输入框(cbBgTimeoutInput,紧挨着总开关).
+           背景图数据本身(base64)存在独立的localStorage key里(见
+           BG_IMAGE_STORAGE_KEY),完全不进入state/JSON导出. -->
+      <div id="compactBarRow9">
+        <span id="cbBgLabel">背景图</span>
+        <button class="compact-btn" id="cbBgToggle" title="开启/关闭背景图（每次刷新页面自动重置为关闭；开启N分钟后自动关闭一次）">关</button>
+        <button class="compact-btn" id="cbBgImport" title="导入背景图（自动开启总开关；替换上一张背景图）">🖼</button>
+        <input type="number" id="cbBgTimeoutInput" min="1" max="180" title="背景图自动关闭时间（分钟）">
+      </div>
       <div id="compactBarRow8">
         <div id="compactFormulaWrap">
           <textarea id="compactFormulaInput" rows="2" spellcheck="false" title="变量：i重要度 m熟练度 p均衡系数"></textarea>
@@ -1628,6 +1738,7 @@
         <button class="mini-btn" id="btnExport" title="导出 JSON">🚁</button>
       </div>
       <input type="file" id="fileInput" accept="application/json">
+      <input type="file" id="bgImageFileInput" accept="image/*">
     </div>
     <div class="param-block">
       <div class="param-label">全局视野</div>
@@ -1775,6 +1886,19 @@
 var STORAGE_KEY = 'spatial_mindmap_v1';
 var PARAMS_STORAGE_KEY = 'spatial_mindmap_params_v1';
 var RAIL_W_STORAGE_KEY = 'spatial_mindmap_railw_v1';
+// "背景图功能...不包含在导出json里面" — deliberately its own localStorage
+// key, entirely separate from STORAGE_KEY (state, exported verbatim via
+// Object.assign in btnExport) and PARAMS_STORAGE_KEY (appParams, also
+// never exported) — a base64 image easily dwarfs the rest of this app's
+// own saved data, so keeping it out of `state` means it can never
+// accidentally leak into an exported JSON file no matter how state's own
+// export logic evolves later. Only ever holds the base64 data URL itself
+// ("背景图一旦导入...直到再次按导入按钮更换背景图" — the LAST imported
+// image, persisted across the on/off toggle) — never the on/off state or
+// the timeout minutes, both of which reset every page load by design (see
+// bgImageActive/bgTimeoutMinutes's own comments below) and so are never
+// persisted here at all.
+var BG_IMAGE_STORAGE_KEY = 'spatial_mindmap_bgimage_v1';
 // bumped whenever the STATE shape changes in a way old exported JSON can't
 // satisfy (e.g. the sizeLevel->4-float scale migration) — IMPORT (not
 // localStorage load) now requires an EXACT match rather than silently
@@ -3721,6 +3845,13 @@ function applyFrameStyle(nodeEl, frameEl, n, w, h, shape){
   var fill = dark ? preset.fillD : preset.fillL;
   var border = dark ? preset.borderD : preset.borderL;
   if(effectiveVis(n)===0) fill = shadeColor(fill, -14);
+  // "节点也半透明" — the fill itself goes through hexToRgba instead of a
+  // blanket CSS opacity on .mm-frame: a CSS opacity would ALSO fade the
+  // border SVG and the text sitting on top of this same fill, which the
+  // "让文字保持易读" implication of a background-photo feature argues
+  // against — only the solid color backing needs to let the photo show
+  // through, not the content drawn over it.
+  if(document.documentElement.classList.contains('bg-image-active')) fill = hexToRgba(fill, .55);
   nodeEl.style.setProperty('--node-fill', fill);
   nodeEl.style.setProperty('--node-border', border);
   var el = frameEl;
@@ -5387,16 +5518,31 @@ function refreshSummaryGrowState(){
   // detail flips this class off, which instantly re-applies #insertSummary's
   // plain 30vh cap (see its own CSS rule) — summary can go from "grown to
   // fill the whole dialog" back down to a sliver in one synchronous class
-  // toggle, yanking several vh out of the flex column above detail all at
-  // once. (The reverse — clearing detail back to empty, lifting the cap and
-  // letting a long summary grow back down PAST detail — is the same jump
-  // in the opposite direction.) Nothing here animates that shift (no CSS
-  // transition on either box's height), so the only reliable fix is to
+  // toggle. Since everything below summary in document order (detail's own
+  // box included) shifts UP by however much summary just shrank, while
+  // #insertDialog's own scrollTop stays wherever it was, detail's box can
+  // end up sitting ABOVE the still-scrolled-down viewport's top edge —
+  // exactly "detail跑到手机屏幕上边以外,看不见了" (not literally off the
+  // physical screen, off the TOP of the scrolled dialog's own visible
+  // window). (The reverse — clearing detail back to empty, lifting the cap
+  // and letting a long summary grow back down PAST detail — is the same
+  // jump in the opposite direction.) Nothing here animates that shift (no
+  // CSS transition on either box's height), so the only reliable fix is to
   // explicitly re-scroll whatever's actively focused back into view the
-  // instant the class actually changes — scrollIntoView forces the layout
-  // recalculation itself, so it already sees the NEW (post-toggle) sizes.
+  // instant the class actually changes. requestAnimationFrame (rather than
+  // calling scrollIntoView synchronously right here) is deliberate: on iOS
+  // Safari this class toggle races with the OS's OWN native keyboard-
+  // avoidance scroll (already fighting for control of this exact
+  // #insertDialog scroll position — see the window-scroll listener's own
+  // comment elsewhere in this file) — calling scrollIntoView on the very
+  // same tick the class flips can still get silently overridden a frame
+  // later once that native adjustment actually lands. Deferring one frame
+  // lets BOTH the CSS reflow AND that native scroll settle first, so this
+  // scrollIntoView is the last word.
   if(isCompactMode() && wasEmpty!==isEmpty && document.activeElement===insertDetailEl){
-    insertDetailEl.scrollIntoView({block:'nearest'});
+    requestAnimationFrame(function(){
+      insertDetailEl.scrollIntoView({block:'nearest'});
+    });
   }
 }
 function closeInsertDialog(){
@@ -9011,13 +9157,21 @@ function cbAddToInboxAction(){
     node(state.rootId).drilled = true;
     scheduleSave(); render();
   }
-  openInsertDialog({mode:'child', anchorId:inbox.id, onCommit:function(){
+  openInsertDialog({mode:'child', anchorId:inbox.id, onCommit:function(newId){
     // "任何跳转功能(...新建...)都会立即使得🖐️变回默认状态" — same reset
     // as activateRandomButton's own call.
     if(typeof resetCompactDragModeIfActive==='function') resetCompactDragModeIfActive();
     inbox.drilled = true;
     state.focusId = inbox.id;
-    selectedId = null;
+    // "刚刚新建了一个新节点后,立刻按⬇️,应该要进入刚刚新建的节点[而不是]
+    // 进入新建节点的老兄弟" — commitInsertDialog() already leaves
+    // selectedId pointing at the just-created node (see its own
+    // `selectedId = newId` right after addChild), but this callback used
+    // to immediately stomp that back to null right after, so cbNavDownEl's
+    // own "选中优先" rule had nothing left to prefer and fell through to
+    // kids[0] (whichever sibling happened to be first) instead. Passing
+    // newId straight through keeps that selection intact.
+    selectedId = newId;
     scheduleSave(); render();
     resyncRootView();
   }});
@@ -9244,6 +9398,103 @@ cbLockHFitToggleEl.addEventListener('click', function(){
   render();
 });
 refreshCbLockHFitToggleUI();
+/* "手机版加一个背景图片功能" — three pieces of UI (总开关/导入/分钟数),
+   all scoped to 手机精致模式 only (the HTML/CSS entry point only exists
+   in #compactBar). bgImageActive/bgTimeoutMinutes are deliberately plain
+   `var`s, never read from OR written to localStorage — "每次刷新页面都会
+   重置为关闭" is satisfied for free by simply never persisting the on/off
+   state at all; bgTimeoutMinutes similarly always starts back at its
+   DEFAULT (10) on every fresh page load, even though the user can freely
+   edit it while the page IS open. Only the image data itself
+   (bgImageDataUrl) persists across reloads, via BG_IMAGE_STORAGE_KEY —
+   "背景图一旦导入...直到再次按导入按钮更换背景图" describes the IMAGE
+   surviving a toggle off/on cycle, which this file's own load-time init
+   (further below) already covers by reading it back in as long as
+   bgImageActive itself starts false regardless. */
+var BG_TIMEOUT_DEFAULT_MIN = 10;
+var cbBgToggleEl = document.getElementById('cbBgToggle');
+var cbBgImportEl = document.getElementById('cbBgImport');
+var cbBgTimeoutInputEl = document.getElementById('cbBgTimeoutInput');
+var bgImageFileInputEl = document.getElementById('bgImageFileInput');
+var bgImageActive = false;
+var bgTimeoutMinutes = BG_TIMEOUT_DEFAULT_MIN;
+var bgImageDataUrl = null;
+var bgAutoOffTimer = null;
+cbBgTimeoutInputEl.value = BG_TIMEOUT_DEFAULT_MIN;
+try{ bgImageDataUrl = localStorage.getItem(BG_IMAGE_STORAGE_KEY); }catch(e){}
+function refreshBgToggleUI(){
+  cbBgToggleEl.textContent = bgImageActive ? '开' : '关';
+  cbBgToggleEl.classList.toggle('active', bgImageActive);
+}
+// sets --bg-image-url directly on <html> — read by both html.bg-image-
+// active body's own rule (the true bottom-layer paint) AND the dialog-
+// overlay rules that re-paint the SAME photo on themselves (see their own
+// CSS comment for why those need their own copy rather than relying on
+// body's showing through). url(...) wrapping happens here, not in CSS,
+// since a raw base64 data: URL can't safely be written into a CSS var's
+// OWN value string via inline style without this JS-side wrap.
+function applyBgImageDom(){
+  document.documentElement.style.setProperty('--bg-image-url', bgImageDataUrl ? 'url('+JSON.stringify(bgImageDataUrl)+')' : 'none');
+  document.documentElement.classList.toggle('bg-image-active', bgImageActive && !!bgImageDataUrl);
+}
+function clearBgAutoOffTimer(){
+  if(bgAutoOffTimer){ clearTimeout(bgAutoOffTimer); bgAutoOffTimer = null; }
+}
+// "按下开关那一刻计时,持续N分钟后自动关闭一次" — armed fresh on every
+// transition INTO the on state (setBgActive(true) below), never on a bare
+// page load (bgImageActive itself already starts false, so there's
+// nothing to time out yet) and never while merely EDITING the minutes
+// textbox with the background already off (see its own input listener,
+// which intentionally does NOT re-arm anything).
+function armBgAutoOffTimer(){
+  clearBgAutoOffTimer();
+  var mins = clamp(parseFloat(cbBgTimeoutInputEl.value) || BG_TIMEOUT_DEFAULT_MIN, 1, 180);
+  bgAutoOffTimer = setTimeout(function(){ setBgActive(false); }, mins*60*1000);
+}
+function setBgActive(on){
+  bgImageActive = on;
+  refreshBgToggleUI();
+  applyBgImageDom();
+  render(); // node fills' own alpha (applyFrameStyle) depend on this class — re-render so every visible node picks it up immediately
+  if(on) armBgAutoOffTimer();
+  else clearBgAutoOffTimer();
+}
+cbBgToggleEl.addEventListener('click', function(){
+  // "本次背景图关闭以后,直接再按一次背景图总开关,会开启上一次的背景图" —
+  // turning back on with no NEW import in between just re-shows
+  // bgImageDataUrl exactly as-is; nothing special to do here beyond the
+  // plain toggle itself, since that persisted value was never cleared by
+  // turning off in the first place.
+  setBgActive(!bgImageActive);
+});
+cbBgImportEl.addEventListener('click', function(){ bgImageFileInputEl.click(); });
+bgImageFileInputEl.addEventListener('change', function(){
+  var f = bgImageFileInputEl.files && bgImageFileInputEl.files[0];
+  bgImageFileInputEl.value = '';
+  if(!f) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    bgImageDataUrl = reader.result;
+    try{ localStorage.setItem(BG_IMAGE_STORAGE_KEY, bgImageDataUrl); }catch(e){}
+    // "背景图导入...会被center crop充满全屏" — background-size:cover on
+    // html.bg-image-active body's own rule (see its own CSS comment)
+    // already does the actual crop-to-fill; nothing extra needed here
+    // beyond just setting the URL.
+    // "导入背景图...自动开启总开关" — importing is itself an implicit "turn
+    // it on", matching how picking a NEW image is obviously meant to be
+    // seen right away rather than silently staying off.
+    setBgActive(true);
+  };
+  reader.readAsDataURL(f);
+});
+// editing the minutes value while the background is CURRENTLY on re-arms
+// the timer against the new duration immediately (otherwise typing a
+// bigger number after the OLD shorter timer already fired would have no
+// effect until the next full on/off cycle); while off, this is a pure no-op
+// beyond storing the typed value — setBgActive(true) reads it fresh anyway.
+cbBgTimeoutInputEl.addEventListener('input', function(){
+  if(bgImageActive) armBgAutoOffTimer();
+});
 document.getElementById('cbCenterVisibleChildren').addEventListener('click', function(){
   compactShowAllMode = !compactShowAllMode;
   refreshCompactShowAllUI();
