@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>思维导图</title>
 <style>
   :root{
@@ -400,6 +400,34 @@
     color:var(--text-dim);user-select:none;
   }
   #rbMaterializeDialog .id-row{display:flex;justify-content:space-between;align-items:center;}
+
+  /* ---------- background-image gallery dialog ---------- */
+  #bgGalleryOverlay{
+    position:fixed;inset:0;background:rgba(20,22,30,.28);z-index:3000;display:none;align-items:center;justify-content:center;
+  }
+  #bgGalleryOverlay.show{display:flex;}
+  #bgGalleryDialog{
+    width:380px;max-height:70vh;display:flex;flex-direction:column;background:var(--panel-bg);border-radius:16px;
+    box-shadow:var(--shadow);padding:18px;
+  }
+  #bgGalleryGrid{
+    flex:1;overflow:auto;display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;
+    margin-bottom:12px;padding:2px;
+  }
+  .bg-gallery-thumb{
+    position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;cursor:pointer;
+    background-size:cover;background-position:center;border:1px solid var(--panel-border);
+    touch-action:manipulation;
+  }
+  /* "+按钮可以添加照片" — visually just another grid cell, styled to read
+     as an action rather than a photo (dashed border, centered glyph, no
+     background-image) so it doesn't get mistaken for an actual thumbnail
+     users might long-press to delete. */
+  .bg-gallery-add{
+    display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--text-dim);
+    border:1.5px dashed var(--panel-border);background:transparent;
+  }
+  #bgGalleryDialog .id-row{display:flex;justify-content:space-between;align-items:center;}
 
   /* ---------- canvas ---------- */
   #canvasWrap{position:relative;flex:1;overflow:hidden;background:var(--canvas-bg);cursor:grab;}
@@ -1081,12 +1109,6 @@
      override is currently forcing a non-default view"), armed by
      compactShowAllMode's own click handler, see refreshCompactShowAllUI. */
   .compact-btn.cb-showall-active{background:#d1495b;color:#fff;border-color:#d1495b;}
-  /* ✳️/🫥 merged button's own long-press-switched state — "✳️长按切换为
-     🫥" gets the same visual-state-without-reading-the-tooltip treatment
-     as every other mode toggle here, reusing this file's own established
-     "non-default mode = tinted background" convention rather than relying
-     on the glyph swap alone. */
-  .compact-btn.cb-inbox-empty-mode{background:#5b8dff;color:#fff;border-color:#5b8dff;}
   /* search+tree cluster: "tree view按钮放在搜索按钮正下方" — same
      stacked-pair pattern as .compact-nav-cluster's own up/down pairing,
      just a single column instead of nav-cluster's extra spanning-column
@@ -1234,17 +1256,16 @@
      just above it despite being a button instead of a slider. */
   #cbLockHFitLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex:1;}
   #cbLockHFitToggle{width:auto;flex-shrink:0;padding:0 14px;}
-  /* "背景图功能,入口放在最底下锁定水平适配屏幕开关并列再加两个背景图开关"
-     — same label+control row shape as #cbLockHFitLabel's own pairing right
-     above, extended with a THIRD control (the minutes-textbox, "10这个数字
-     也在紧挨着的一个文本框里可以编辑") after the two buttons. cbBgLabel
-     does NOT get flex:1 the way cbLockHFitLabel does — with three controls
-     already fighting for space on one row (二 buttons + a number input),
-     letting the label eat all remaining space would squeeze the textbox
-     down to unusably narrow on a phone; a fixed shrink-to-content width
-     for the label leaves the textbox its own min-width instead. */
+  /* "背景图开关按钮放到原先✳️的位置" — cbBgToggle itself now lives in row1's
+     own .compact-stack-cluster (see #cbAddChild's sibling markup) as a
+     plain .compact-btn with no extra sizing rule needed. This row now only
+     holds the gallery-opener button + the auto-off minutes textbox ("10
+     这个数字也在紧挨着的一个文本框里可以编辑"); cbBgLabel does NOT get
+     flex:1 the way cbLockHFitLabel does — with two controls already
+     fighting for space on one row, letting the label eat all remaining
+     space would squeeze the textbox down to unusably narrow on a phone. */
   #cbBgLabel{font-size:clamp(10px,2.4vw,12px);color:var(--text-dim);white-space:nowrap;flex-shrink:0;}
-  #cbBgToggle, #cbBgImport{width:auto;flex-shrink:0;padding:0 12px;}
+  #cbBgGalleryBtn{width:auto;flex-shrink:0;padding:0 12px;}
   #cbBgTimeoutInput{
     width:44px;flex-shrink:0;border:1px solid var(--panel-border);border-radius:8px;
     background:var(--bg);color:var(--text-main);font-size:13px;text-align:center;padding:4px 2px;
@@ -1306,16 +1327,21 @@
      underneath it. */
   html.bg-image-active #insertOverlay,
   html.bg-image-active #statEditOverlay,
-  html.bg-image-active #rbMaterializeOverlay{
+  html.bg-image-active #rbMaterializeOverlay,
+  html.bg-image-active #bgGalleryOverlay{
     background-image:linear-gradient(rgba(20,22,30,.55),rgba(20,22,30,.55)),var(--bg-image-url)!important;
     background-size:cover;background-position:center;background-repeat:no-repeat;
   }
   html.bg-image-active #insertDialog,
   html.bg-image-active #statEditDialog,
-  html.bg-image-active #rbMaterializeDialog{
+  html.bg-image-active #rbMaterializeDialog,
+  html.bg-image-active #bgGalleryDialog{
     background:rgba(120,130,160,.3)!important;
   }
   html.bg-image-active .compact-btn,
+  html.bg-image-active .compact-rb-btn,
+  html.bg-image-active #compactDepthCtl > div,
+  html.bg-image-active #compactFormulaInput,
   html.bg-image-active .id-copy-btn,
   html.bg-image-active #insertSummary,
   html.bg-image-active #insertDetail,
@@ -1593,8 +1619,8 @@
         <button class="compact-btn" id="cbRandomizeVisibleStyle" title="随机打乱当前可见区域一级子节点的颜色和边框">🌈</button>
       </div>
       <div class="compact-stack-cluster">
-        <button class="compact-btn" id="cbAddChild" title="新建孩子节点">➕</button>
-        <button class="compact-btn" id="cbAddToInbox" title="新建节点到未归纳节点">✳️</button>
+        <button class="compact-btn" id="cbAddChild" title="新建孩子节点（长按切换：➕新建 / ✳️新建到未归纳 / 🫥随机选一空B或未归纳）">➕</button>
+        <button class="compact-btn" id="cbBgToggle" title="开启/关闭背景图（每次刷新页面自动重置为关闭；开启N分钟后自动关闭一次）">关</button>
       </div>
     </div>
     <div id="compactBarRow2">
@@ -1639,15 +1665,15 @@
         <span id="cbLockHFitLabel">锁定水平适配屏幕</span>
         <button class="compact-btn" id="cbLockHFitToggle" title="开启后子节点群永远水平对齐屏幕（左右不溢出，上下可滚动）；关闭后恢复按外接矩形比例自动选择对齐方向">开</button>
       </div>
-      <!-- "背景图功能,入口放在最底下锁定水平适配屏幕开关并列再加两个背景图
-           开关" — 总开关(cbBgToggle,默认关闭,不持久化跨刷新)/导入按钮
-           (cbBgImport)/自动关闭分钟数输入框(cbBgTimeoutInput,紧挨着总开关).
-           背景图数据本身(base64)存在独立的localStorage key里(见
-           BG_IMAGE_STORAGE_KEY),完全不进入state/JSON导出. -->
+      <!-- "背景图开关按钮放到原先✳️的位置"(见row1的.compact-stack-cluster,
+           #cbBgToggle) — this row now only holds the gallery-opener button
+           and the auto-off minutes textbox, both still logically paired
+           with that toggle. 背景图数据本身(base64数组)存在独立的
+           localStorage key里(见BG_GALLERY_STORAGE_KEY),完全不进入
+           state/JSON导出. -->
       <div id="compactBarRow9">
         <span id="cbBgLabel">背景图</span>
-        <button class="compact-btn" id="cbBgToggle" title="开启/关闭背景图（每次刷新页面自动重置为关闭；开启N分钟后自动关闭一次）">关</button>
-        <button class="compact-btn" id="cbBgImport" title="导入背景图（自动开启总开关；替换上一张背景图）">🖼</button>
+        <button class="compact-btn" id="cbBgGalleryBtn" title="打开背景图图库（管理已保存的图片，每次开启背景图会随机选一张）">🖼</button>
         <input type="number" id="cbBgTimeoutInput" min="1" max="180" title="背景图自动关闭时间（分钟）">
       </div>
       <div id="compactBarRow8">
@@ -1876,6 +1902,23 @@
   </div>
 </div>
 
+<!-- "🖼️按钮不再是选择照片,而是打开一个gallery列表...列表最后+按钮可以添加
+     照片,长按图片可以直接从列表中删除" — a plain grid of thumbnails, no
+     name field/tree picker needed (unlike rbMaterializeDialog above, this
+     has nothing to configure besides the images themselves). -->
+<div id="bgGalleryOverlay">
+  <div id="bgGalleryDialog">
+    <div class="id-label">背景图图库（点击应用，长按删除；开启背景图时随机选一张）</div>
+    <div id="bgGalleryGrid"></div>
+    <div class="id-row">
+      <span></span>
+      <div class="id-actions">
+        <button class="id-btn plain" id="bgGalleryCloseBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
 'use strict';
@@ -1889,16 +1932,15 @@ var RAIL_W_STORAGE_KEY = 'spatial_mindmap_railw_v1';
 // "背景图功能...不包含在导出json里面" — deliberately its own localStorage
 // key, entirely separate from STORAGE_KEY (state, exported verbatim via
 // Object.assign in btnExport) and PARAMS_STORAGE_KEY (appParams, also
-// never exported) — a base64 image easily dwarfs the rest of this app's
-// own saved data, so keeping it out of `state` means it can never
+// never exported) — a base64 image array easily dwarfs the rest of this
+// app's own saved data, so keeping it out of `state` means it can never
 // accidentally leak into an exported JSON file no matter how state's own
-// export logic evolves later. Only ever holds the base64 data URL itself
-// ("背景图一旦导入...直到再次按导入按钮更换背景图" — the LAST imported
-// image, persisted across the on/off toggle) — never the on/off state or
-// the timeout minutes, both of which reset every page load by design (see
+// export logic evolves later. Holds an ARRAY of base64 data URLs (the
+// full gallery — "打开一个gallery列表"), never the on/off state or the
+// timeout minutes, both of which reset every page load by design (see
 // bgImageActive/bgTimeoutMinutes's own comments below) and so are never
 // persisted here at all.
-var BG_IMAGE_STORAGE_KEY = 'spatial_mindmap_bgimage_v1';
+var BG_GALLERY_STORAGE_KEY = 'spatial_mindmap_bggallery_v1';
 // bumped whenever the STATE shape changes in a way old exported JSON can't
 // satisfy (e.g. the sizeLevel->4-float scale migration) — IMPORT (not
 // localStorage load) now requires an EXACT match rather than silently
@@ -5528,21 +5570,64 @@ function refreshSummaryGrowState(){
   // and letting a long summary grow back down PAST detail — is the same
   // jump in the opposite direction.) Nothing here animates that shift (no
   // CSS transition on either box's height), so the only reliable fix is to
-  // explicitly re-scroll whatever's actively focused back into view the
-  // instant the class actually changes. requestAnimationFrame (rather than
-  // calling scrollIntoView synchronously right here) is deliberate: on iOS
-  // Safari this class toggle races with the OS's OWN native keyboard-
-  // avoidance scroll (already fighting for control of this exact
-  // #insertDialog scroll position — see the window-scroll listener's own
-  // comment elsewhere in this file) — calling scrollIntoView on the very
-  // same tick the class flips can still get silently overridden a frame
-  // later once that native adjustment actually lands. Deferring one frame
-  // lets BOTH the CSS reflow AND that native scroll settle first, so this
-  // scrollIntoView is the last word.
+  // explicitly re-scroll the ACTUAL CARET position back into view the
+  // instant the class actually changes — scrollDetailCaretIntoView (below)
+  // reads the live caret rect via Selection/Range rather than just calling
+  // insertDetailEl.scrollIntoView(), because a plain scrollIntoView only
+  // guarantees the whole (possibly still-tall, still-scrolled) detail BOX
+  // is on screen, not that the caret's own line inside it is — "光标对齐
+  // 到视野以内" is specifically about the caret, not the box. Double
+  // requestAnimationFrame (rather than a single deferred frame) is
+  // deliberate: on iOS Safari this class toggle races with the OS's OWN
+  // native keyboard-avoidance scroll (already fighting for control of this
+  // exact #insertDialog scroll position — see the window-scroll listener's
+  // own comment elsewhere in this file), and a single frame wasn't
+  // reliably enough after BOTH the CSS reflow AND that native scroll
+  // finish landing — a second frame gives the native adjustment one more
+  // tick to settle before this reads/corrects the final caret position.
   if(isCompactMode() && wasEmpty!==isEmpty && document.activeElement===insertDetailEl){
     requestAnimationFrame(function(){
-      insertDetailEl.scrollIntoView({block:'nearest'});
+      requestAnimationFrame(scrollDetailCaretIntoView);
     });
+  }
+}
+/* reads the LIVE caret position (via window.getSelection()'s current
+   Range inside #insertDetail) and nudges #insertDialog's own scrollTop
+   just enough to bring that exact point back within the visible viewport
+   — window.visualViewport (when available) is used instead of plain
+   window.innerHeight so the check accounts for the virtual keyboard
+   already having shrunk the actually-visible area, not just the full
+   layout viewport underneath it. A collapsed range's own
+   getClientRects()[0] still returns a real (zero-width) box at the
+   caret's screen position in every engine this app targets, so this
+   works identically for both "just typed the first character" (this
+   function's own call site, refreshSummaryGrowState) and any other
+   future caller. Falls back to a plain scrollIntoView on the whole
+   element if no usable caret rect exists at all (e.g. focus moved
+   elsewhere between the deferred frame firing and this running). */
+function scrollDetailCaretIntoView(){
+  if(!isCompactMode() || document.activeElement!==insertDetailEl) return;
+  var rect = null;
+  var sel = window.getSelection();
+  if(sel && sel.rangeCount){
+    var range = sel.getRangeAt(0);
+    if(insertDetailEl.contains(range.startContainer)){
+      var rects = range.getClientRects();
+      rect = (rects && rects.length) ? rects[0] : range.getBoundingClientRect();
+    }
+  }
+  if(!rect || (rect.top===0 && rect.bottom===0 && rect.left===0)){
+    insertDetailEl.scrollIntoView({block:'nearest'});
+    return;
+  }
+  var vv = window.visualViewport;
+  var viewTop = vv ? vv.offsetTop : 0;
+  var viewBottom = vv ? vv.offsetTop+vv.height : window.innerHeight;
+  var margin = 14;
+  if(rect.top < viewTop+margin){
+    insertDialog.scrollTop -= (viewTop+margin - rect.top);
+  } else if(rect.bottom > viewBottom-margin){
+    insertDialog.scrollTop += (rect.bottom - (viewBottom-margin));
   }
 }
 function closeInsertDialog(){
@@ -5911,7 +5996,7 @@ document.addEventListener('keydown', function(e){
   //      too, matching the plain "nothing selected, blank nav" reset.
   //   2. a selected/glowing node -> clear just that
   //   3. focus resting on a rail button -> blur it
-  if(e.key==='Escape' && !insertOverlay.classList.contains('show') && !rbMaterializeOverlay.classList.contains('show') && !statEditOverlayEl.classList.contains('show')){
+  if(e.key==='Escape' && !insertOverlay.classList.contains('show') && !rbMaterializeOverlay.classList.contains('show') && !statEditOverlayEl.classList.contains('show') && !bgGalleryOverlayEl.classList.contains('show')){
     // the size gauge has its own independent lifetime (see triggerSizeGauge)
     // and Esc always dismisses it immediately regardless of which OTHER
     // layer this same Escape press goes on to clear below.
@@ -8763,6 +8848,7 @@ document.addEventListener('mousedown', function(e){
   if(e.target.closest('#insertOverlay')) return;
   if(e.target.closest('#rbMaterializeOverlay')) return;
   if(e.target.closest('#statEditOverlay')) return;
+  if(e.target.closest('#bgGalleryOverlay')) return;
   if(anyRailPanelOpen() && !e.target.closest('#searchFlyout') && !e.target.closest('#treeFlyout')
      && !e.target.closest('#paramsFlyout') && !e.target.closest('#randomFlyout') && !e.target.closest('#rail')){
     closeAllRailPanels();
@@ -8907,7 +8993,7 @@ var COMPACT_MOVE_STEP = BASE_DIAM*0.18; // a visibly-felt nudge at 中速 (mult=
 // 🖐️的循环变成关闭+3个蓝色+1个红色,删除掉🫥的位置" — the former 6th
 // cycle state (🫥/onlyEmptyB, which retargeted EVERY random-pick button's
 // shared scope via appParams.onlyEmptyBNodes) is gone from this cycle
-// entirely; see cbAddToInboxEl's own long-press-to-switch comment for
+// entirely; see cbAddChildEl's own long-press-to-switch comment for
 // where that "仅空B" semantics now lives instead — as its OWN dedicated
 // random-pick action, not a global scope-flip.
 var COMPACT_DRAG_SPEEDS = ['off', 'fast', 'mid', 'slow', 'scroll'];
@@ -9125,28 +9211,34 @@ cbNavPrevSiblingEl.addEventListener('click', function(){
   setExpandedToDepth(prevId, appParams.maxAutoDepth);
   scheduleSave(); render();
 });
-/* "第一个+是在当前的节点下面新建一个小孩和其他可以看见的小孩平级,或者
-   如果没有已知的小孩,那么则新建第一个孩子节点" — opens the SAME unified
-   dialog every other insert path uses (mode:'child') instead of directly
-   creating an empty, un-editable node — "应该要弹出【文本基本信息编辑框】,
-   而不是直接新建一个空信息的节点,无法编辑". commitInsertDialog already
-   silently no-ops on an empty submit, so cancelling out of this dialog
-   leaves the tree untouched, same as every other creation path. */
-document.getElementById('cbAddChild').addEventListener('click', function(){
+/* "+/✳️/🫥一起合并,长按切换,短按执行各自的功能,放在+的位置" — cbAddChildMode
+   ('child' | 'inbox' | 'onlyEmptyB') tracks which of the three functions a
+   plain tap currently performs; long-press (mouse/touch, same
+   LONG_PRESS_MS timer pattern renderRbCycleBtn/attachRbLongPress already
+   use elsewhere in this file) advances it one step (child->inbox->
+   onlyEmptyB->child), swapping the glyph, and does NOT itself perform any
+   of the three actions — mirroring how long-press on the rail's own
+   random-pick buttons opens a menu instead of activating.
+   "+: 新建孩子节点" — opens the SAME unified dialog every other insert
+   path uses (mode:'child') instead of directly creating an empty,
+   un-editable node — "应该要弹出【文本基本信息编辑框】,而不是直接新建一个
+   空信息的节点,无法编辑". commitInsertDialog already silently no-ops on an
+   empty submit, so cancelling out of this dialog leaves the tree
+   untouched, same as every other creation path. */
+function cbAddChildAction(){
   openInsertDialog({mode:'child', anchorId:state.focusId});
-});
-/* "第二个+表示在根节点目录下新建到一个特殊的编号为一的节点,如果没有这个
-   节点就创建,否则直接追加到已有的孩子列表里面" — looks for a direct child
-   of state.rootId whose summary is exactly "未归纳" (plain-text compare,
-   same richToPlain everything else in this file already uses to read a
+}
+/* "✳️: 在根节点目录下新建到一个特殊的编号为一的节点,如果没有这个节点就
+   创建,否则直接追加到已有的孩子列表里面" — looks for a direct child of
+   state.rootId whose summary is exactly "未归纳" (plain-text compare, same
+   richToPlain everything else in this file already uses to read a
    rich-text summary as plain text); creates it (via a real pushUndo/
    addChild pair, since that container node itself has no dialog of its
    own) if missing, then opens the SAME unified dialog (mode:'child')
-   anchored on it for the new node's own text/attributes — never a
-   second "未归纳" node. Once that dialog is confirmed, onCommit jumps
-   the main view to this inbox node as its OWN focus root — "确认以后,
-   主视角要跳转到以那个按钮为可见区域根节点的视角,而不是现在这样停留在
-   之前的视角". */
+   anchored on it for the new node's own text/attributes — never a second
+   "未归纳" node. Once that dialog is confirmed, onCommit jumps the main
+   view to this inbox node as its OWN focus root — "确认以后,主视角要跳转到
+   以那个按钮为可见区域根节点的视角,而不是现在这样停留在之前的视角". */
 function cbAddToInboxAction(){
   var rootKids = children(state.rootId);
   var inbox = rootKids.filter(function(k){ return richToPlain(k.summary)==='未归纳'; })[0];
@@ -9176,25 +9268,22 @@ function cbAddToInboxAction(){
     resyncRootView();
   }});
 }
-/* "把🖐️第五下的🫥单独拉出来变成一个随机选一按钮...让它和✳️按钮合并,长按
-   切换...长按✳️的时候,按钮会切换为🫥,此时短按的时候,功能是随机显示一个
-   [空B或未归纳子节点]...再次长按🫥,则会切换回去✳️按钮的功能" — cbInboxMode
-   ('inbox' | 'onlyEmptyB') tracks which of the two functions a plain tap
-   currently performs; long-press (mouse/touch, same LONG_PRESS_MS timer
-   pattern renderRbCycleBtn/attachRbLongPress already use elsewhere in
-   this file) just flips it, swapping the glyph, and does NOT itself
-   perform either action — mirroring how long-press on the rail's own
-   random-pick buttons opens a menu instead of activating. */
-var cbInboxMode = 'inbox';
-var cbAddToInboxEl = document.getElementById('cbAddToInbox');
-function refreshCbAddToInboxUI(){
-  cbAddToInboxEl.textContent = cbInboxMode==='onlyEmptyB' ? '🫥' : '✳️';
-  cbAddToInboxEl.classList.toggle('cb-inbox-empty-mode', cbInboxMode==='onlyEmptyB');
-  cbAddToInboxEl.title = cbInboxMode==='onlyEmptyB'
-    ? '随机选一：全域空B节点 ∪ 未归纳子节点（长按切回✳️新建）'
-    : '新建节点到未归纳节点（长按切换为🫥随机选一）';
+var CB_ADD_CHILD_MODES = ['child', 'inbox', 'onlyEmptyB'];
+var cbAddChildMode = 'child';
+var cbAddChildEl = document.getElementById('cbAddChild');
+// "切换成🫥的时候,不要让🫥按钮变成蓝色边框,就正常按钮,只是替换emoji就好了"
+// — unlike the OLD ✳️/🫥-only merge (which tinted the button blue via
+// .cb-inbox-empty-mode whenever 🫥 was active), this 3-way version never
+// applies ANY active/tinted class for any of its 3 states — every state
+// is visually a completely plain .compact-btn, distinguished ONLY by its
+// glyph and title text.
+function refreshCbAddChildUI(){
+  cbAddChildEl.textContent = cbAddChildMode==='inbox' ? '✳️' : (cbAddChildMode==='onlyEmptyB' ? '🫥' : '➕');
+  cbAddChildEl.title = cbAddChildMode==='inbox' ? '新建节点到未归纳节点（长按切换为🫥随机选一）'
+    : cbAddChildMode==='onlyEmptyB' ? '随机选一：全域空B节点 ∪ 未归纳子节点（长按切回➕新建）'
+    : '新建孩子节点（长按切换为✳️新建到未归纳）';
 }
-refreshCbAddToInboxUI();
+refreshCbAddChildUI();
 /* synthetic random-pick button object for the 🫥 mode's own dedicated
    scope — never added to state.randomButtons (not persisted, not listed
    in any panel/rail — this button is its own standalone entry point, not
@@ -9205,42 +9294,44 @@ refreshCbAddToInboxUI();
    free. See randomButtonScopeBNodes' own isEmptyOrInbox branch for the
    actual scope definition. */
 var cbInboxRandomButton = {id: 'cb-inbox-random', name:'空B/未归纳', isEmptyOrInbox:true};
-cbAddToInboxEl.addEventListener('click', function(ev){
-  if(cbAddToInboxEl._suppressClick){ cbAddToInboxEl._suppressClick = false; return; }
-  if(cbInboxMode==='onlyEmptyB') activateRandomButton(cbInboxRandomButton);
-  else cbAddToInboxAction();
+cbAddChildEl.addEventListener('click', function(ev){
+  if(cbAddChildEl._suppressClick){ cbAddChildEl._suppressClick = false; return; }
+  if(cbAddChildMode==='onlyEmptyB') activateRandomButton(cbInboxRandomButton);
+  else if(cbAddChildMode==='inbox') cbAddToInboxAction();
+  else cbAddChildAction();
 });
 (function(){
   var timer = null, fired = false;
   function clearTimer(){ if(timer){ clearTimeout(timer); timer = null; } }
-  function toggleMode(){
-    cbInboxMode = (cbInboxMode==='onlyEmptyB') ? 'inbox' : 'onlyEmptyB';
-    refreshCbAddToInboxUI();
+  function advanceMode(){
+    var idx = CB_ADD_CHILD_MODES.indexOf(cbAddChildMode);
+    cbAddChildMode = CB_ADD_CHILD_MODES[(idx+1) % CB_ADD_CHILD_MODES.length];
+    refreshCbAddChildUI();
   }
-  cbAddToInboxEl.addEventListener('mousedown', function(ev){
+  cbAddChildEl.addEventListener('mousedown', function(ev){
     timer = setTimeout(function(){
       fired = true;
-      cbAddToInboxEl._suppressClick = true;
-      toggleMode();
+      cbAddChildEl._suppressClick = true;
+      advanceMode();
     }, LONG_PRESS_MS);
   });
-  cbAddToInboxEl.addEventListener('mouseup', clearTimer);
-  cbAddToInboxEl.addEventListener('mouseleave', clearTimer);
+  cbAddChildEl.addEventListener('mouseup', clearTimer);
+  cbAddChildEl.addEventListener('mouseleave', clearTimer);
   // same native touch long-press bridge attachRbLongPress/renderRbCycleBtn
   // use elsewhere in this file — a real finger slide before the timer
   // fires cancels it (scroll/drag attempt, not a long-press).
   var tStartX=0, tStartY=0, tMoved=false;
-  cbAddToInboxEl.addEventListener('touchstart', function(ev){
+  cbAddChildEl.addEventListener('touchstart', function(ev){
     if(ev.touches.length!==1) return;
     var t = ev.touches[0];
     tStartX = t.clientX; tStartY = t.clientY; tMoved = false; fired = false;
     timer = setTimeout(function(){
       fired = true;
-      cbAddToInboxEl._suppressClick = true;
-      toggleMode();
+      cbAddChildEl._suppressClick = true;
+      advanceMode();
     }, LONG_PRESS_MS);
   }, {passive:true});
-  cbAddToInboxEl.addEventListener('touchmove', function(ev){
+  cbAddChildEl.addEventListener('touchmove', function(ev){
     if(tMoved || !ev.touches.length) return;
     var t = ev.touches[0];
     if(Math.abs(t.clientX-tStartX)+Math.abs(t.clientY-tStartY)>10){
@@ -9248,11 +9339,11 @@ cbAddToInboxEl.addEventListener('click', function(ev){
       clearTimer();
     }
   }, {passive:true});
-  cbAddToInboxEl.addEventListener('touchend', function(ev){
+  cbAddChildEl.addEventListener('touchend', function(ev){
     clearTimer();
     if(fired) ev.preventDefault();
   });
-  cbAddToInboxEl.addEventListener('touchcancel', clearTimer);
+  cbAddChildEl.addEventListener('touchcancel', clearTimer);
 })();
 // 🟧: "直接是打开当前显示区域根节点的信息编辑窗口,不再拥有其他功能...
 // 按下他一次永远会进入一个信息编辑窗口,也就是当前可见区域根节点的,不论它
@@ -9398,30 +9489,52 @@ cbLockHFitToggleEl.addEventListener('click', function(){
   render();
 });
 refreshCbLockHFitToggleUI();
-/* "手机版加一个背景图片功能" — three pieces of UI (总开关/导入/分钟数),
-   all scoped to 手机精致模式 only (the HTML/CSS entry point only exists
-   in #compactBar). bgImageActive/bgTimeoutMinutes are deliberately plain
-   `var`s, never read from OR written to localStorage — "每次刷新页面都会
-   重置为关闭" is satisfied for free by simply never persisting the on/off
-   state at all; bgTimeoutMinutes similarly always starts back at its
-   DEFAULT (10) on every fresh page load, even though the user can freely
-   edit it while the page IS open. Only the image data itself
-   (bgImageDataUrl) persists across reloads, via BG_IMAGE_STORAGE_KEY —
-   "背景图一旦导入...直到再次按导入按钮更换背景图" describes the IMAGE
-   surviving a toggle off/on cycle, which this file's own load-time init
-   (further below) already covers by reading it back in as long as
-   bgImageActive itself starts false regardless. */
+/* "手机版加一个背景图片功能" — 总开关(cbBgToggle,现在移到了row1原✳️的
+   位置)/图库按钮(cbBgGalleryBtn)/分钟数(cbBgTimeoutInput). bgImageActive/
+   bgTimeoutMinutes are deliberately plain `var`s, never read from OR
+   written to localStorage — "每次刷新页面都会重置为关闭" is satisfied for
+   free by simply never persisting the on/off state at all;
+   bgTimeoutMinutes similarly always starts back at its DEFAULT (10) on
+   every fresh page load, even though the user can freely edit it while
+   the page IS open.
+   "图库列表...每次按背景图开关功能打开的时候,从列表里面随机选一张作为
+   背景显示" — bgGallery (an ARRAY of data URLs, persisted via
+   BG_GALLERY_STORAGE_KEY) replaces the old single bgImageDataUrl; turning
+   the toggle ON always re-rolls a fresh random pick from whatever is
+   currently in the gallery (see setBgActive's own call to
+   pickRandomGalleryImage) rather than remembering "the last shown one" —
+   the OLD single-image behavior ("直到再次按导入按钮更换背景图") no longer
+   applies now that there can be many images; every ON is its own fresh
+   roll. */
 var BG_TIMEOUT_DEFAULT_MIN = 10;
 var cbBgToggleEl = document.getElementById('cbBgToggle');
-var cbBgImportEl = document.getElementById('cbBgImport');
+var cbBgGalleryBtnEl = document.getElementById('cbBgGalleryBtn');
 var cbBgTimeoutInputEl = document.getElementById('cbBgTimeoutInput');
-var bgImageFileInputEl = document.getElementById('bgImageFileInput');
+var bgGalleryFileInputEl = document.getElementById('bgImageFileInput');
 var bgImageActive = false;
 var bgTimeoutMinutes = BG_TIMEOUT_DEFAULT_MIN;
+// the CURRENTLY DISPLAYED image (one entry of bgGallery, chosen fresh on
+// every ON) — separate from bgGallery itself since the gallery can be
+// edited (add/delete) while a DIFFERENT, already-picked image stays on
+// screen; only the next ON re-rolls.
 var bgImageDataUrl = null;
+var bgGallery = [];
 var bgAutoOffTimer = null;
 cbBgTimeoutInputEl.value = BG_TIMEOUT_DEFAULT_MIN;
-try{ bgImageDataUrl = localStorage.getItem(BG_IMAGE_STORAGE_KEY); }catch(e){}
+try{
+  var rawGallery = localStorage.getItem(BG_GALLERY_STORAGE_KEY);
+  if(rawGallery){
+    var parsedGallery = JSON.parse(rawGallery);
+    if(Array.isArray(parsedGallery)) bgGallery = parsedGallery.filter(function(u){ return typeof u==='string'; });
+  }
+}catch(e){}
+function saveBgGallery(){
+  try{ localStorage.setItem(BG_GALLERY_STORAGE_KEY, JSON.stringify(bgGallery)); }catch(e){}
+}
+function pickRandomGalleryImage(){
+  if(!bgGallery.length) return null;
+  return bgGallery[Math.floor(Math.random()*bgGallery.length)];
+}
 function refreshBgToggleUI(){
   cbBgToggleEl.textContent = bgImageActive ? '开' : '关';
   cbBgToggleEl.classList.toggle('active', bgImageActive);
@@ -9453,6 +9566,11 @@ function armBgAutoOffTimer(){
 }
 function setBgActive(on){
   bgImageActive = on;
+  // "仍然允许开启,只是无图可显示" — turning ON with an empty gallery just
+  // leaves bgImageDataUrl null; applyBgImageDom/its own bg-image-active
+  // class check (bgImageActive && !!bgImageDataUrl) already treats that as
+  // "no visible change", so this never needs a separate empty-gallery guard.
+  if(on) bgImageDataUrl = pickRandomGalleryImage();
   refreshBgToggleUI();
   applyBgImageDom();
   render(); // node fills' own alpha (applyFrameStyle) depend on this class — re-render so every visible node picks it up immediately
@@ -9460,33 +9578,9 @@ function setBgActive(on){
   else clearBgAutoOffTimer();
 }
 cbBgToggleEl.addEventListener('click', function(){
-  // "本次背景图关闭以后,直接再按一次背景图总开关,会开启上一次的背景图" —
-  // turning back on with no NEW import in between just re-shows
-  // bgImageDataUrl exactly as-is; nothing special to do here beyond the
-  // plain toggle itself, since that persisted value was never cleared by
-  // turning off in the first place.
   setBgActive(!bgImageActive);
 });
-cbBgImportEl.addEventListener('click', function(){ bgImageFileInputEl.click(); });
-bgImageFileInputEl.addEventListener('change', function(){
-  var f = bgImageFileInputEl.files && bgImageFileInputEl.files[0];
-  bgImageFileInputEl.value = '';
-  if(!f) return;
-  var reader = new FileReader();
-  reader.onload = function(){
-    bgImageDataUrl = reader.result;
-    try{ localStorage.setItem(BG_IMAGE_STORAGE_KEY, bgImageDataUrl); }catch(e){}
-    // "背景图导入...会被center crop充满全屏" — background-size:cover on
-    // html.bg-image-active body's own rule (see its own CSS comment)
-    // already does the actual crop-to-fill; nothing extra needed here
-    // beyond just setting the URL.
-    // "导入背景图...自动开启总开关" — importing is itself an implicit "turn
-    // it on", matching how picking a NEW image is obviously meant to be
-    // seen right away rather than silently staying off.
-    setBgActive(true);
-  };
-  reader.readAsDataURL(f);
-});
+cbBgGalleryBtnEl.addEventListener('click', openBgGalleryDialog);
 // editing the minutes value while the background is CURRENTLY on re-arms
 // the timer against the new duration immediately (otherwise typing a
 // bigger number after the OLD shorter timer already fired would have no
@@ -9494,6 +9588,94 @@ bgImageFileInputEl.addEventListener('change', function(){
 // beyond storing the typed value — setBgActive(true) reads it fresh anyway.
 cbBgTimeoutInputEl.addEventListener('input', function(){
   if(bgImageActive) armBgAutoOffTimer();
+});
+/* "打开一个gallery列表,每个列表放一个缩略图,列表最后+按钮可以添加照片,
+   长按图片可以直接从列表中删除(不删除文件)" — a plain grid rebuilt from
+   bgGallery on every open/add/delete (small array, no need for anything
+   fancier than a full innerHTML rebuild each time). "点击缩略图即应用并
+   关闭弹窗" — clicking an existing thumbnail sets it as the CURRENT image
+   and turns the toggle on (same "picking a photo obviously means show it
+   now" reasoning the old single-image importer used), then closes the
+   dialog; the + tile instead opens the file picker and does NOT close the
+   dialog (so multiple photos can be added in one sitting). */
+var bgGalleryOverlayEl = document.getElementById('bgGalleryOverlay');
+var bgGalleryGridEl = document.getElementById('bgGalleryGrid');
+function renderBgGalleryGrid(){
+  bgGalleryGridEl.innerHTML = '';
+  bgGallery.forEach(function(url, idx){
+    var thumb = document.createElement('div');
+    thumb.className = 'bg-gallery-thumb';
+    thumb.style.backgroundImage = 'url('+JSON.stringify(url)+')';
+    thumb.addEventListener('click', function(ev){
+      if(thumb._suppressClick){ thumb._suppressClick = false; return; }
+      bgImageDataUrl = url;
+      setBgActive(true);
+      closeBgGalleryDialog();
+    });
+    // same long-press timer pattern as cbAddChildEl/renderRbCycleBtn
+    // elsewhere in this file — "长按图片可以直接从列表中删除(不删除文件)"
+    // 直接删除无需二次确认(与tree view挪动模式的×按钮那种"删除整棵子树"的
+    // 破坏性操作不同,这里删的只是一条图库记录,原始照片本身完全不受影响).
+    (function(){
+      var timer = null, fired = false;
+      function clearTimer(){ if(timer){ clearTimeout(timer); timer = null; } }
+      function doDelete(){
+        var i = bgGallery.indexOf(url);
+        if(i!==-1) bgGallery.splice(i, 1);
+        saveBgGallery();
+        // a deleted image that happens to be the CURRENTLY displayed one
+        // stays visually displayed until the next toggle-off/on cycle —
+        // this dialog only manages the gallery LIST, not what's live now.
+        renderBgGalleryGrid();
+      }
+      thumb.addEventListener('mousedown', function(ev){
+        timer = setTimeout(function(){ fired = true; thumb._suppressClick = true; doDelete(); }, LONG_PRESS_MS);
+      });
+      thumb.addEventListener('mouseup', clearTimer);
+      thumb.addEventListener('mouseleave', clearTimer);
+      var tStartX=0, tStartY=0, tMoved=false;
+      thumb.addEventListener('touchstart', function(ev){
+        if(ev.touches.length!==1) return;
+        var t = ev.touches[0];
+        tStartX = t.clientX; tStartY = t.clientY; tMoved = false; fired = false;
+        timer = setTimeout(function(){ fired = true; thumb._suppressClick = true; doDelete(); }, LONG_PRESS_MS);
+      }, {passive:true});
+      thumb.addEventListener('touchmove', function(ev){
+        if(tMoved || !ev.touches.length) return;
+        var t = ev.touches[0];
+        if(Math.abs(t.clientX-tStartX)+Math.abs(t.clientY-tStartY)>10){ tMoved = true; clearTimer(); }
+      }, {passive:true});
+      thumb.addEventListener('touchend', function(ev){ clearTimer(); if(fired) ev.preventDefault(); });
+      thumb.addEventListener('touchcancel', clearTimer);
+    })();
+    bgGalleryGridEl.appendChild(thumb);
+  });
+  var addTile = document.createElement('div');
+  addTile.className = 'bg-gallery-thumb bg-gallery-add';
+  addTile.textContent = '+';
+  addTile.addEventListener('click', function(){ bgGalleryFileInputEl.click(); });
+  bgGalleryGridEl.appendChild(addTile);
+}
+function openBgGalleryDialog(){
+  renderBgGalleryGrid();
+  bgGalleryOverlayEl.classList.add('show');
+}
+function closeBgGalleryDialog(){
+  bgGalleryOverlayEl.classList.remove('show');
+}
+document.getElementById('bgGalleryCloseBtn').addEventListener('click', closeBgGalleryDialog);
+bgGalleryOverlayEl.addEventListener('mousedown', function(e){ if(e.target===bgGalleryOverlayEl) closeBgGalleryDialog(); });
+bgGalleryFileInputEl.addEventListener('change', function(){
+  var f = bgGalleryFileInputEl.files && bgGalleryFileInputEl.files[0];
+  bgGalleryFileInputEl.value = '';
+  if(!f) return;
+  var reader = new FileReader();
+  reader.onload = function(){
+    bgGallery.push(reader.result);
+    saveBgGallery();
+    renderBgGalleryGrid();
+  };
+  reader.readAsDataURL(f);
 });
 document.getElementById('cbCenterVisibleChildren').addEventListener('click', function(){
   compactShowAllMode = !compactShowAllMode;
