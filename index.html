@@ -1767,6 +1767,10 @@
           <button class="mini-btn" id="btnOnlyEmptyB" title="开启后，所有随机选一按钮只在没有孩子且没有detail的B节点中选择；关闭时只在有孩子或有detail的B节点中选择">🫥</button>
           <div class="reset-btn-caption">仅空B</div>
         </div>
+        <div class="reset-btn-col">
+          <button class="mini-btn" id="btnVisCycleDetail" title="开启后，能见度循环包含detail（summary→summary+detail→隐藏，三段循环）；关闭时（默认）永远只在summary/隐藏之间二段循环，detail只能通过打开信息编辑框查看">2️⃣</button>
+          <div class="reset-btn-caption">循环含<br>detail</div>
+        </div>
       </div>
     </div>
     <div class="param-block">
@@ -2067,7 +2071,22 @@ var appParams = {
   // own comment), read by randomButtonScopeBNodes so EVERY random-pick
   // button (materialized or global, on either surface) partitions its
   // B-node pool the same way.
-  onlyEmptyBNodes: false
+  onlyEmptyBNodes: false,
+  // "重置位置里面再塞进去一个开关表示能见度循环是否包含detail,现在默认关闭
+  // ...手机端也是默认关闭" — global, desktop-only entry point (手机精致
+  //模式没有按钮,依赖电脑版控制"), read by hasDetailForVisCycle below at
+  // EVERY visibility-cycle decision point (single/batch/compact) instead of
+  // each call site checking appParams directly — "关闭以后,能见度循环永远
+  // 都是2循环...永远不显示detail. detail只有打开信息编辑框才能看见" is
+  // satisfied purely by capping maxVis at 1 regardless of whether the node
+  // actually HAS detail text; the raw richToPlain(n.detail).length check
+  // (hasDetail itself) stays untouched everywhere else (computeNodeBox's
+  // own showDetail gate, node fill rendering, etc.) so a node whose vis
+  // somehow already reads 2 (imported JSON saved before this toggle
+  // existed, or before it was flipped off) still RENDERS its detail
+  // correctly — this only blocks the CYCLE from ever landing on 2 again,
+  // never hides detail that's already showing.
+  visCycleIncludesDetail: false
 };
 function loadParams(){
   try{
@@ -2080,6 +2099,7 @@ function loadParams(){
     if(typeof p.expandCap==='number') appParams.expandCap = clamp(p.expandCap, EXPAND_CAP_MIN, EXPAND_CAP_MAX);
     if(typeof p.compactLockHorizontalFit==='boolean') appParams.compactLockHorizontalFit = p.compactLockHorizontalFit;
     if(typeof p.onlyEmptyBNodes==='boolean') appParams.onlyEmptyBNodes = p.onlyEmptyBNodes;
+    if(typeof p.visCycleIncludesDetail==='boolean') appParams.visCycleIncludesDetail = p.visCycleIncludesDetail;
     // 'mobileMode' boolean is the OLD (pre-3-way-switch) storage format —
     // migrate it forward into the new uiMode enum so a returning user's
     // prior on/off choice survives as "mobile-raw" (the mode the old
@@ -2115,8 +2135,13 @@ var CONTENT_PAD = 0.80;    // fraction of frame usable for text content
 // "summary如果太长,也用省略号代替,因为不能因为一个节点就把其他节点挤到
 // 看不见或者屏幕以外". Desktop/手机原始模式 keep wrapText's original
 // unbounded behavior untouched (no maxLines argument passed there).
-var COMPACT_SUMMARY_MAX_LINES = 3;
-var COMPACT_DETAIL_MAX_LINES = 4;
+// "summary可见的时候,可以看见的char数量太少了...把这个summary完整显示的
+// 最大长度变成2.5倍" — both caps ×2.5 (3->7.5, rounded to 8; 4->10) from
+// their original values, so a short summary that used to still get
+// force-ellipsized at just 3 wrapped lines now has real room to render in
+// full before the ellipsis ever kicks in.
+var COMPACT_SUMMARY_MAX_LINES = 8;
+var COMPACT_DETAIL_MAX_LINES = 10;
 
 /* random-pick ("随机选一") panel: weighting formula, expressed as plain JS
    so the user can rewrite it from the panel itself. Inputs: i (=importance,
@@ -2467,6 +2492,18 @@ function node(id){ return state.nodes[id]; }
 function children(id){ var n=node(id); return n? n.children.map(node).filter(Boolean) : []; }
 function parentOf(id){ var n=node(id); return n && n.parentId ? node(n.parentId) : null; }
 function hasDetail(n){ return richToPlain(n.detail||'').length>0; }
+/* gates whether a node's OWN detail text is allowed to extend its
+   visibility cycle to level 2 — "能见度循环是否包含detail...关闭以后,
+   能见度循环永远都是2循环...永远不显示detail" (appParams.visCycleIncludesDetail,
+   default false). Every cycle-length decision (cycleVis/cycleVisBatch/
+   compactCycleNodeVis) reads THIS instead of raw hasDetail(n), so flipping
+   the toggle off immediately caps every future cycle at 1 regardless of
+   which nodes actually have detail text — hasDetail itself stays
+   unchanged everywhere else (computeNodeBox's showDetail gate, node-fill
+   rendering, etc.), so a node whose vis already reads 2 from before the
+   toggle was flipped off still renders its detail correctly; only the
+   CYCLE's own reachable ceiling changes. */
+function hasDetailForVisCycle(n){ return appParams.visCycleIncludesDetail && hasDetail(n); }
 /* while category-edit mode is active, every node's hidden content becomes
    temporarily visible as SUMMARY ONLY (never detail — "所有节点都可见
    summary，而不是summary+detail") — rendering only; n.vis itself is
@@ -2478,7 +2515,7 @@ function effectiveVis(n){ return catEditMode ? 1 : n.vis; }
 /* cycle a node's visibility toward higher visibility: 0(hidden)->1(summary)->2(summary+detail)->0.
    if the node has no detail text, skip level 2 (hidden<->summary only, 2-step cycle). */
 function cycleVis(n){
-  var maxVis = hasDetail(n) ? 2 : 1;
+  var maxVis = hasDetailForVisCycle(n) ? 2 : 1;
   n.vis = (n.vis>=maxVis) ? 0 : n.vis+1;
 }
 /* batch-cycle a group of nodes together: if ANY of them has detail text, the
@@ -2487,7 +2524,7 @@ function cycleVis(n){
    detail simply render the same at level 1 and level 2. */
 function cycleVisBatch(nodes){
   if(!nodes.length) return;
-  var maxVis = nodes.some(hasDetail) ? 2 : 1;
+  var maxVis = nodes.some(hasDetailForVisCycle) ? 2 : 1;
   var next = (nodes[0].vis>=maxVis) ? 0 : nodes[0].vis+1;
   nodes.forEach(function(n){ n.vis = next; });
 }
@@ -5213,7 +5250,7 @@ function compactCycleNodeVis(n){
     // 切换可见度" symptom whenever a subtree was C-heavy. Category must
     // not affect this batch cycle's membership in any way.
     var subtree = subtreeIds(n.id).map(node).filter(Boolean);
-    var maxVis = subtree.some(hasDetail) ? 2 : 1;
+    var maxVis = subtree.some(hasDetailForVisCycle) ? 2 : 1;
     // reference for "what's the next step": prefer a NON-drilled subtree
     // member — using the drilled anchor's OWN vis (what cycleVisBatch's
     // own nodes[0] convention would do) breaks the cycle, because the
@@ -8113,17 +8150,31 @@ var relaxSlider = document.getElementById('relaxSlider');
 var fontScaleValueEl = document.getElementById('fontScaleValue');
 var expandCapValueEl = document.getElementById('expandCapValue');
 var btnOnlyEmptyB = document.getElementById('btnOnlyEmptyB');
+var btnVisCycleDetail = document.getElementById('btnVisCycleDetail');
 registerRailPanel(btnParams, paramsFlyout, function(){ refreshParamsUI(); });
 function refreshParamsUI(){
   relaxSlider.value = Math.round(appParams.relaxStrength*100);
   fontScaleValueEl.textContent = appParams.globalFontScale.toFixed(1)+'×';
   expandCapValueEl.textContent = appParams.expandCap;
   btnOnlyEmptyB.classList.toggle('active', appParams.onlyEmptyBNodes);
+  btnVisCycleDetail.classList.toggle('active', appParams.visCycleIncludesDetail);
 }
 btnOnlyEmptyB.addEventListener('click', function(){
   appParams.onlyEmptyBNodes = !appParams.onlyEmptyBNodes;
   refreshParamsUI();
   if(typeof refreshCbDragToggleUI==='function') refreshCbDragToggleUI();
+  saveParams();
+  render();
+});
+// "手机端也是默认关闭(精致手机版没有按钮,依赖电脑版控制)" — no compact-mode
+// entry point at all; this desktop-only button is the sole place
+// appParams.visCycleIncludesDetail is ever flipped. Existing vis values
+// already at 2 are left exactly as they were (see hasDetailForVisCycle's
+// own comment) — flipping this only changes what the NEXT cycle tap can
+// reach, never retroactively clamps anything already showing.
+btnVisCycleDetail.addEventListener('click', function(){
+  appParams.visCycleIncludesDetail = !appParams.visCycleIncludesDetail;
+  refreshParamsUI();
   saveParams();
   render();
 });
@@ -8227,28 +8278,27 @@ document.getElementById('expandCapPlus').addEventListener('click', function(){
 
 /* index -> unit {x,y} offset (pre-scale) for the fixed small-count
    symmetric arrangements the two size-reset buttons distribute direct
-   children into — “依据一级子节点数量,将他们以空间均匀的方式分布在母节点
-   正中央”: 2 -> 水平两点, 3/5 -> 三角形/五角星, 4 -> 2x2正方形 (not a
-   rotated diamond ring — “四个兄弟排成直线,不是很合理,应该是2x2正方形”),
-   6 -> 五角星带中心节点. n>=7 falls through to the square-grid rule at the
-   bottom instead of getting its own entry here.
+   children into — "依据一级子节点数量,将他们以空间均匀的方式分布在母节点
+   正中央": 2 -> 竖直两点("N=2的时候两个节点竖着排而不是横着"), 3 -> 三角形,
+   4 -> 棱形("正方形旋转45度"), 5 -> 五角星, 6 -> 立起来的正六边形("顶点朝上,
+   不是平边朝上"), 7 -> 六边形+正中心一个节点. n>=8 falls through to the
+   square-grid rule at the bottom instead of getting its own entry here.
    The RETURNED array's own order is what symmetrizeChildrenOf assigns,
    slot-for-slot, to children(parentId)'s existing array order (creation/
    sibling order — the SAME order tree view walks and JSON export
-   serializes, and the SAME order tree view's own“挪动”选择/孩子/兄弟
-   buttons splice into n.children) — “⭕️自动化重新排布的顺序...统一改
-   成从上往下,从左往右,一排一排编号排序,比如5个节点就是五角星形状,第一个节点
-   排在顶端,2/3排在两个胳膊位置,4/5排在左脚右脚”. readingOrderSort below
-   is what actually enforces that: each shape formula still computes its
-   points in whatever order is most convenient to derive geometrically
-   (the pentagon cases build clockwise from the top vertex), then this one
-   shared sort reorders the FINAL array into true top-to-bottom,
-   left-to-right reading order regardless of how each branch generated
-   it — so slot 0 is always the topmost (leftmost among ties) point, slot
-   1 the next, etc. The n===4 and n>=7 grid cases already happen to build
-   their points in that order natively (verified by inspection), so
-   sorting is a no-op for them; n===2 is also already left-then-right. Only
-   n===3/5/6's clockwise-from-top construction actually gets reordered. */
+   serializes, and the SAME order tree view's own"挪动"选择/孩子/兄弟
+   buttons splice into n.children) — "⭕️自动化重新排布的顺序...统一改
+   成从上往下,从左往右,一排一排编号排序". readingOrderSort below is what
+   actually enforces that: each shape formula still computes its points in
+   whatever order is most convenient to derive geometrically (the n-gon
+   cases build clockwise from the top vertex), then this one shared sort
+   reorders the FINAL array into true top-to-bottom, left-to-right reading
+   order regardless of how each branch generated it — so slot 0 is always
+   the topmost (leftmost among ties) point, slot 1 the next, etc. The
+   n>=8 grid case already happens to build its points in that order
+   natively (verified by inspection), so sorting is a no-op for it; n===2
+   is also already top-then-bottom. Only n===3/4/5/6/7's clockwise-from-
+   top construction actually gets reordered. */
 function readingOrderSort(points){
   // group into "rows" by y within a small epsilon (pure float noise
   // between mirror-image angles like -18°/198° can leave their sines a
@@ -8263,11 +8313,22 @@ function readingOrderSort(points){
 function symmetricUnitPositions(n){
   var TWO_PI = Math.PI*2;
   if(n<=1) return [{x:0,y:0}];
-  if(n===2) return readingOrderSort([{x:-0.5,y:0},{x:0.5,y:0}]);
-  if(n===3 || n===5){
-    // regular n-gon, one vertex pointing straight up — a 5-pointed star's
-    // own tips sit at exactly these same 5 evenly-spaced points, so a
-    // regular pentagon's vertex ring already IS the “五角星” arrangement.
+  // "N=2的时候两个节点竖着排而不是横着" — vertical stack, not the old
+  // horizontal pair.
+  if(n===2) return readingOrderSort([{x:0,y:-0.5},{x:0,y:0.5}]);
+  if(n===3 || n===4 || n===5 || n===6){
+    // regular n-gon, one vertex pointing straight up, built clockwise —
+    // this single formula now covers ALL four shapes: n=3 triangle, n=4
+    // diamond ("正方形旋转45度" — a square's own 4 vertices, spaced 90°
+    // apart starting from the top, ARE a 45°-rotated square, i.e. exactly
+    // this diamond), n=5 pentagon/五角星, n=6 a hexagon standing on one
+    // vertex (point at the top, not a flat edge). readingOrderSort below
+    // is what actually turns "clockwise from the top" into "编号从上到下,
+    // 从左到右" — for n=4 that reorders top/bottom-vertex order into
+    // top,left,right,bottom (顶点在上,2/3为左右两臂,4在下方); for n=6 into
+    // top, upper-left, upper-right, lower-left, lower-right, bottom (1顶部,
+    // 2/3两只上臂,4/5两只下臂,6正下方) — matching "N=6用立起来的正六边形,
+    // 第一个点在最顶上,23在两只手臂,45在两只手臂下方,6在正下方" exactly.
     var R = 0.5/Math.sin(Math.PI/n);
     var out = [];
     for(var i=0;i<n;i++){
@@ -8276,25 +8337,28 @@ function symmetricUnitPositions(n){
     }
     return readingOrderSort(out);
   }
-  if(n===4){
-    return readingOrderSort([{x:-0.5,y:-0.5},{x:0.5,y:-0.5},{x:-0.5,y:0.5},{x:0.5,y:0.5}]);
-  }
-  if(n===6){
-    // same 5-point ring as n===5, plus one node pinned dead center.
-    var R6 = 0.5/Math.sin(Math.PI/5);
-    var out6 = [{x:0,y:0}];
-    for(var j=0;j<5;j++){
-      var ang6 = (j/5)*TWO_PI - Math.PI/2;
-      out6.push({x:Math.cos(ang6)*R6, y:Math.sin(ang6)*R6});
+  if(n===7){
+    // "N=7在N=6基础上放置正中心一个节点,123编号节点不变,编号4的节点在
+    // 正中心" — the SAME standing hexagon as n===6 above, plus one node
+    // pinned dead center. Center sits at y=0, exactly between the
+    // hexagon's own upper-arm row (y<0) and lower-arm row (y>0), so
+    // readingOrderSort's top-to-bottom pass naturally slots it in at
+    // position 4 (after the top vertex + 2 upper arms, before the 2 lower
+    // arms + bottom vertex) with no special-case index math needed.
+    var R7 = 0.5/Math.sin(Math.PI/6);
+    var out7 = [{x:0,y:0}];
+    for(var j=0;j<6;j++){
+      var ang7 = (j/6)*TWO_PI - Math.PI/2;
+      out7.push({x:Math.cos(ang7)*R7, y:Math.sin(ang7)*R7});
     }
-    return readingOrderSort(out6);
+    return readingOrderSort(out7);
   }
-  // 7+: “近似正方形排列...向上寻找平方数然后视图填满它的布局” — smallest
-  // side*side grid that fits every node (7/8/9 all land on a 3x3 grid),
+  // 8+: "近似正方形排列...向上寻找平方数然后视图填满它的布局" — smallest
+  // side*side grid that fits every node (9/10/16 land on square grids),
   // filled row-major and centered on the mother; any leftover cells in
   // the grid's last row are simply left empty. Capped at side=4 (16
-  // nodes) — “平方数最多到4*4,超过16个节点的时候,不能再寻找下一个平方数,
-  // 而是按照4个一排,往下排列,没有上限”. Past that cap the column count
+  // nodes) — "平方数最多到4*4,超过16个节点的时候,不能再寻找下一个平方数,
+  // 而是按照4个一排,往下排列,没有上限". Past that cap the column count
   // freezes at 4 and the grid just grows taller (more rows) instead of
   // wider, since a 5-wide+ row on a phone screen is exactly what starts
   // forcing the font small enough to become illegible — capping columns
@@ -8306,8 +8370,8 @@ function symmetricUnitPositions(n){
   var outg = [];
   for(var k=0;k<n;k++){
     var row = Math.floor(k/side), col = k%side;
-    // “母节点上半部分几乎一半的面积都是空的,从中间才开始排布,并且一路排
-    // 到最底下” — the vertical center offset must be based on the ACTUAL
+    // "母节点上半部分几乎一半的面积都是空的,从中间才开始排布,并且一路排
+    // 到最底下" — the vertical center offset must be based on the ACTUAL
     // row count (rows), not on side (the fixed column count, always 4
     // past the 16-node cap). Centering against side instead of rows was
     // fine only by coincidence for n<=16 (where rows<=side, e.g. a 4x4
@@ -8319,6 +8383,84 @@ function symmetricUnitPositions(n){
     outg.push({x:col-(side-1)/2, y:row-(rows-1)/2});
   }
   return readingOrderSort(outg);
+}
+
+/* "所有的一排以内的节点都要改成左高右低的,为了防止横向碰撞...不论N是多少" —
+   symmetricUnitPositions's own rings/grid always place every node in a
+   given "row" (same y) at the EXACT same height, which is exactly the
+   configuration two circular/near-circular boxes sitting side by side can
+   collide along their shared horizontal edge the hardest (zero vertical
+   offset between two wide shapes is the worst case for computeCrowdScale's
+   own pairSumRadius reach). Staggering left-to-right within each row (a
+   node further right sits slightly lower) breaks that exact-same-height
+   alignment without changing the OVERALL shape's silhouette or its
+   reading-order numbering (row membership, and left-to-right rank WITHIN
+   a row, both still come from symmetricUnitPositions/readingOrderSort
+   unchanged — this function only nudges each node's OWN py a little
+   within its row, never its row or its rank). "纵向间距...大概是一倍左右
+   avg(box height)略小的间距" governs both the intra-row stagger step AND
+   the inter-row gap: STAGGER_FRAC controls how much the LAST node in a row
+   is pushed down relative to the FIRST (kept well under one full height so
+   the stagger reads as a rakish tilt, not a second sub-row), and
+   ROW_GAP_FRAC is the minimum clear vertical margin enforced between one
+   row's own lowest point and the next row's own highest point — "最右边的
+   节点y还是比下一排第一个y稍微高一点" is exactly this margin: it only
+   pushes the NEXT row down when it would otherwise overlap/crowd the
+   previous row's already-staggered-down right edge, never merges the two
+   rows' own y-ranges together. */
+var ROW_STAGGER_EPS = 1e-6;
+var STAGGER_FRAC = 1.87; // fraction of avg(row height) spread across a row's own left-to-right stagger — "纵向偏离还是不太够,几乎调整为现在的2.2倍" (was 0.85; 0.85*2.2≈1.87). At this size a row's own last (rightmost) node can end up sitting lower than the NEXT row's first (leftmost) node once ROW_GAP_FRAC's own push-down is applied on top of it — deliberately left unguarded ("不用管,就让他低"): no extra logic here tries to keep "prev row's last node stays above next row's first node" true once the stagger itself is this large; the two safeguards (intra-row stagger, inter-row minimum gap) each still do their own job independently, they just no longer compose into that ADDITIONAL ordering guarantee at this stagger size.
+var ROW_GAP_FRAC = 0.85; // minimum clear vertical gap enforced between consecutive rows, as a fraction of the lower row's own avg height
+function applyRowStagger(boxes){
+  var n = boxes.length;
+  if(n<2) return;
+  // group by shared unit-row (same py, pre-stagger) — boxes are still at
+  // their plain ring/grid py from the assignment just above, so nodes in
+  // the same geometric row still share the exact same py at this point.
+  var rows = [];
+  boxes.forEach(function(b){
+    var row = null;
+    for(var r=0;r<rows.length;r++){
+      if(Math.abs(rows[r].py-b.node.py)<ROW_STAGGER_EPS){ row = rows[r]; break; }
+    }
+    if(!row){ row = {py:b.node.py, items:[]}; rows.push(row); }
+    row.items.push(b);
+  });
+  rows.sort(function(a,b){ return a.py-b.py; });
+  rows.forEach(function(row){
+    row.items.sort(function(a,b){ return a.node.px-b.node.px; });
+    var m = row.items.length;
+    if(m<2) return; // a lone node in its own row has nothing to stagger against
+    var avgH = row.items.reduce(function(s,b){ return s+b.h; }, 0)/m;
+    var step = avgH*STAGGER_FRAC/(m-1);
+    row.items.forEach(function(b, k){
+      // centered so the row's own average py is unchanged (same rank-0
+      // node sitting at rank (m-1)/2 stays exactly where symmetricUnitPositions
+      // put it) — only the SPREAD around that average is new.
+      b.node.py += (k-(m-1)/2)*step;
+    });
+  });
+  // "最右边的节点y还是比下一排第一个y稍微高一点" — after staggering, push
+  // any row down (uniformly, preserving its own internal stagger) that
+  // would otherwise start at or above the previous row's own lowest
+  // (rightmost-staggered) point, so the clear-gap guarantee holds even
+  // after the stagger above has pushed a row's own last node down toward
+  // the next row.
+  var prevRowBottom = null;
+  rows.forEach(function(row){
+    var rowTop = Math.min.apply(null, row.items.map(function(b){ return b.node.py; }));
+    var rowBottom = Math.max.apply(null, row.items.map(function(b){ return b.node.py; }));
+    if(prevRowBottom!==null){
+      var avgH2 = row.items.reduce(function(s,b){ return s+b.h; }, 0)/row.items.length;
+      var minGap = avgH2*ROW_GAP_FRAC;
+      var deficit = (prevRowBottom+minGap) - rowTop;
+      if(deficit>0){
+        row.items.forEach(function(b){ b.node.py += deficit; });
+        rowBottom += deficit;
+      }
+    }
+    prevRowBottom = rowBottom;
+  });
 }
 
 /* redistribute parentId's DIRECT children into the symmetricUnitPositions
@@ -8388,6 +8530,7 @@ function symmetrizeChildrenOf(parentId){
     b.node.py = units[i].y*cellSize;
     b.node.placed = true;
   });
+  applyRowStagger(boxes);
   // "母节点的画布再根据子节点分布范围重新定义,没有被节点边缘覆盖的画布就
   // 丢掉不要了,而不是让节点占满画布" — the SAME flag 🎯
   // (btnCenterVisibleChildren) already sets to make containerSize skip
