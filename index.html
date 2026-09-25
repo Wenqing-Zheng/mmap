@@ -3,6 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<!-- "背景图打开的情况下,网页顶上手机刘海那里还是有横的黑边" — viewport-fit=
+     cover alone only lets the PAGE'S OWN content extend into the notch/
+     safe-area region; it does nothing about Safari's own status-bar chrome
+     still painting there when the page is opened as a normal browser tab.
+     The black bar only goes away once the page runs as an iOS "standalone"
+     web-app (added to the Home Screen) — apple-mobile-web-app-capable
+     switches it into that mode, and status-bar-style black-translucent
+     makes the status bar itself transparent so THIS page's own background
+     (the photo) shows straight through it instead of Safari painting its
+     own solid bar on top. Opened as a normal Safari tab (not added to
+     Home Screen), the notch area is still Safari's own chrome and no page-
+     level CSS can reach it — that part is an iOS platform limit, not
+     something fixable here. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- "加一个Service Worker,让手机电脑都能离线使用,尤其PWA" — link+registration
+     enable full offline load (see sw.js's own top-of-file comment for the
+     caching strategy). apple-touch-icon is what iOS actually uses for the
+     home-screen icon when "添加到主屏幕" is used — manifest.json's own
+     icons array is read by Android/desktop Chrome's own install prompt,
+     not Safari, so both are needed for icon-完整 coverage across
+     platforms. -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>思维导图</title>
 <style>
   :root{
@@ -299,6 +323,14 @@
   }
   .mini-btn:hover{background:rgba(120,130,160,.14);}
   .mini-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  /* "外加精致手机版壁纸更换的两个按钮一个输入框也都加进来" — same numeric
+     minutes textbox as #cbBgTimeoutInput's own compact-mode rule, just
+     sized to match .mini-btn's own 26px row height instead of
+     .compact-btn's clamp()-based touch sizing. */
+  #desktopBgTimeoutInput{
+    width:40px;height:26px;flex-shrink:0;border:1px solid var(--panel-border);border-radius:8px;
+    background:var(--bg);color:var(--text-main);font-size:12px;text-align:center;padding:0 2px;
+  }
   #relaxSlider{width:100%;accent-color:var(--accent);}
   /* 3-way display-mode switch (desktop/手机原始/手机精致) — exactly one
      .ui-mode-btn carries .active (driven by applyUiMode), same visual
@@ -1757,28 +1789,34 @@
         <button class="mini-btn" id="expandCapPlus">＋</button>
       </div>
     </div>
+    <!-- "把导入导出,全局视野,显示模式里面所有按钮,合并为一整排一个章节" —
+         a single label + one flex-wrapping button row. -->
     <div class="param-block">
-      <div class="param-label">导入导出</div>
-      <div class="param-stepper" style="flex-wrap:wrap;">
+      <div class="param-label">导入导出 / 全局视野 / 显示模式</div>
+      <div class="param-stepper" id="uiModeSwitch" style="flex-wrap:wrap;">
         <button class="mini-btn" id="btnImport" title="导入 JSON">🚢</button>
         <button class="mini-btn" id="btnExport" title="导出 JSON">🚁</button>
-      </div>
-      <input type="file" id="fileInput" accept="application/json">
-      <input type="file" id="bgImageFileInput" accept="image/*">
-    </div>
-    <div class="param-block">
-      <div class="param-label">全局视野</div>
-      <div class="param-stepper" style="flex-wrap:wrap;">
         <button class="mini-btn" id="btnFit" title="回到全局">⛩</button>
-      </div>
-    </div>
-    <div class="param-block">
-      <div class="param-label">显示模式</div>
-      <div class="param-stepper" id="uiModeSwitch" style="flex-wrap:wrap;">
         <button class="mini-btn ui-mode-btn" data-mode="desktop" title="电脑模式：完整功能，左侧导航栏">🖥</button>
         <button class="mini-btn ui-mode-btn" data-mode="mobile-raw" title="手机原始模式：底部导航栏+触屏模拟键盘快捷键，功能与电脑版一致">📱</button>
         <button class="mini-btn ui-mode-btn" data-mode="mobile-compact" title="手机精致模式：为手机触屏重新设计的简洁界面，省略复杂编辑功能">✨</button>
       </div>
+      <input type="file" id="fileInput" accept="application/json">
+    </div>
+    <!-- "和壁纸有关的三个要单独再做一个章节" — cbBgToggle/cbBgGalleryBtn/
+         cbBgTimeoutInput are 手机精致模式's own #compactBar controls;
+         these are NEW desktopBg*-prefixed elements wired to the exact
+         SAME bgImageActive/bgGallery state and setBgActive/
+         openBgGalleryDialog functions via JS (see their own wiring further
+         below) rather than duplicating any logic. -->
+    <div class="param-block">
+      <div class="param-label">壁纸</div>
+      <div class="param-stepper" style="flex-wrap:wrap;">
+        <button class="mini-btn" id="desktopBgToggle" title="开启/关闭背景图（每次刷新页面自动重置为关闭；开启N分钟后自动关闭一次）">关</button>
+        <button class="mini-btn" id="desktopBgGalleryBtn" title="打开背景图图库（管理已保存的图片，每次开启背景图会随机选一张）">🖼</button>
+        <input type="number" id="desktopBgTimeoutInput" min="1" max="180" title="背景图自动关闭时间（分钟）">
+      </div>
+      <input type="file" id="bgImageFileInput" accept="image/*">
     </div>
   </div>
 
@@ -9510,6 +9548,18 @@ var BG_TIMEOUT_DEFAULT_MIN = 10;
 var cbBgToggleEl = document.getElementById('cbBgToggle');
 var cbBgGalleryBtnEl = document.getElementById('cbBgGalleryBtn');
 var cbBgTimeoutInputEl = document.getElementById('cbBgTimeoutInput');
+// "把...精致手机版壁纸更换的两个按钮一个输入框也都加进来,功能和精致手机版
+// 一样" — desktop's own #paramsFlyout controls, wired to the EXACT same
+// bgImageActive/bgGallery state and setBgActive/openBgGalleryDialog
+// functions below rather than a parallel reimplementation; every function
+// that touches one surface's DOM (refreshBgToggleUI/armBgAutoOffTimer)
+// updates/reads BOTH surfaces so the two stay in lockstep regardless of
+// which one the user actually interacts with — same "two textareas share
+// one state" pattern refreshFormulaStatus already uses for randomFormulaInput/
+// compactFormulaInput.
+var desktopBgToggleEl = document.getElementById('desktopBgToggle');
+var desktopBgGalleryBtnEl = document.getElementById('desktopBgGalleryBtn');
+var desktopBgTimeoutInputEl = document.getElementById('desktopBgTimeoutInput');
 var bgGalleryFileInputEl = document.getElementById('bgImageFileInput');
 var bgImageActive = false;
 var bgTimeoutMinutes = BG_TIMEOUT_DEFAULT_MIN;
@@ -9521,6 +9571,7 @@ var bgImageDataUrl = null;
 var bgGallery = [];
 var bgAutoOffTimer = null;
 cbBgTimeoutInputEl.value = BG_TIMEOUT_DEFAULT_MIN;
+desktopBgTimeoutInputEl.value = BG_TIMEOUT_DEFAULT_MIN;
 try{
   var rawGallery = localStorage.getItem(BG_GALLERY_STORAGE_KEY);
   if(rawGallery){
@@ -9536,8 +9587,10 @@ function pickRandomGalleryImage(){
   return bgGallery[Math.floor(Math.random()*bgGallery.length)];
 }
 function refreshBgToggleUI(){
-  cbBgToggleEl.textContent = bgImageActive ? '开' : '关';
-  cbBgToggleEl.classList.toggle('active', bgImageActive);
+  [cbBgToggleEl, desktopBgToggleEl].forEach(function(el){
+    el.textContent = bgImageActive ? '开' : '关';
+    el.classList.toggle('active', bgImageActive);
+  });
 }
 // sets --bg-image-url directly on <html> — read by both html.bg-image-
 // active body's own rule (the true bottom-layer paint) AND the dialog-
@@ -9558,19 +9611,26 @@ function clearBgAutoOffTimer(){
 // page load (bgImageActive itself already starts false, so there's
 // nothing to time out yet) and never while merely EDITING the minutes
 // textbox with the background already off (see its own input listener,
-// which intentionally does NOT re-arm anything).
+// which intentionally does NOT re-arm anything). Reads bgTimeoutMinutes
+// (kept in sync by BOTH minutes textboxes' own input listeners further
+// below) rather than either DOM element directly, so it always reflects
+// whichever surface the user most recently typed into.
 function armBgAutoOffTimer(){
   clearBgAutoOffTimer();
-  var mins = clamp(parseFloat(cbBgTimeoutInputEl.value) || BG_TIMEOUT_DEFAULT_MIN, 1, 180);
-  bgAutoOffTimer = setTimeout(function(){ setBgActive(false); }, mins*60*1000);
+  bgAutoOffTimer = setTimeout(function(){ setBgActive(false); }, bgTimeoutMinutes*60*1000);
 }
-function setBgActive(on){
+function setBgActive(on, forcedUrl){
   bgImageActive = on;
   // "仍然允许开启,只是无图可显示" — turning ON with an empty gallery just
   // leaves bgImageDataUrl null; applyBgImageDom/its own bg-image-active
   // class check (bgImageActive && !!bgImageDataUrl) already treats that as
   // "no visible change", so this never needs a separate empty-gallery guard.
-  if(on) bgImageDataUrl = pickRandomGalleryImage();
+  // forcedUrl (passed by the gallery grid's own thumbnail click handler —
+  // "单击某个具体图片,应该要打开对应图片作为背景,而不是随机选一个") skips
+  // the random re-roll entirely; every OTHER caller (the plain on/off
+  // toggle buttons) omits it and keeps the original "fresh random pick on
+  // every ON" behavior.
+  if(on) bgImageDataUrl = forcedUrl!==undefined ? forcedUrl : pickRandomGalleryImage();
   refreshBgToggleUI();
   applyBgImageDom();
   render(); // node fills' own alpha (applyFrameStyle) depend on this class — re-render so every visible node picks it up immediately
@@ -9580,15 +9640,30 @@ function setBgActive(on){
 cbBgToggleEl.addEventListener('click', function(){
   setBgActive(!bgImageActive);
 });
+desktopBgToggleEl.addEventListener('click', function(){
+  setBgActive(!bgImageActive);
+});
 cbBgGalleryBtnEl.addEventListener('click', openBgGalleryDialog);
+desktopBgGalleryBtnEl.addEventListener('click', openBgGalleryDialog);
 // editing the minutes value while the background is CURRENTLY on re-arms
 // the timer against the new duration immediately (otherwise typing a
 // bigger number after the OLD shorter timer already fired would have no
 // effect until the next full on/off cycle); while off, this is a pure no-op
 // beyond storing the typed value — setBgActive(true) reads it fresh anyway.
-cbBgTimeoutInputEl.addEventListener('input', function(){
+// Both textboxes write the SAME bgTimeoutMinutes var and mirror their own
+// typed value into the OTHER box (unless that other box currently has
+// focus, which would otherwise stomp an in-progress edit there — the same
+// guard refreshFormulaStatus already applies to its own two textareas).
+function syncBgTimeoutInputs(sourceEl){
+  var mins = clamp(parseFloat(sourceEl.value) || BG_TIMEOUT_DEFAULT_MIN, 1, 180);
+  bgTimeoutMinutes = mins;
+  [cbBgTimeoutInputEl, desktopBgTimeoutInputEl].forEach(function(el){
+    if(el!==sourceEl && document.activeElement!==el) el.value = mins;
+  });
   if(bgImageActive) armBgAutoOffTimer();
-});
+}
+cbBgTimeoutInputEl.addEventListener('input', function(){ syncBgTimeoutInputs(cbBgTimeoutInputEl); });
+desktopBgTimeoutInputEl.addEventListener('input', function(){ syncBgTimeoutInputs(desktopBgTimeoutInputEl); });
 /* "打开一个gallery列表,每个列表放一个缩略图,列表最后+按钮可以添加照片,
    长按图片可以直接从列表中删除(不删除文件)" — a plain grid rebuilt from
    bgGallery on every open/add/delete (small array, no need for anything
@@ -9608,8 +9683,7 @@ function renderBgGalleryGrid(){
     thumb.style.backgroundImage = 'url('+JSON.stringify(url)+')';
     thumb.addEventListener('click', function(ev){
       if(thumb._suppressClick){ thumb._suppressClick = false; return; }
-      bgImageDataUrl = url;
-      setBgActive(true);
+      setBgActive(true, url);
       closeBgGalleryDialog();
     });
     // same long-press timer pattern as cbAddChildEl/renderRbCycleBtn
@@ -10457,6 +10531,23 @@ window.addEventListener('scroll', function(){
 }, {passive:true});
 
 })();
+</script>
+<script>
+// "加一个Service Worker,让手机电脑都能离线使用,尤其PWA" — registered
+// outside the main IIFE (deliberately: SW registration has nothing to do
+// with this app's own state/UI logic, and keeping it separate means a
+// syntax error here can never break the main app's own script from
+// parsing). serviceWorker itself is undefined in non-secure contexts
+// (plain http://, not https/localhost) — the guard is what lets this file
+// still work opened directly as a local file or over plain http without
+// throwing.
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(err){
+      console.error('Service Worker registration failed:', err);
+    });
+  });
+}
 </script>
 </body>
 </html>
